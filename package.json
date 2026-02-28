@@ -10,7 +10,9 @@
     "build": "tsc",
     "start": "node dist/main.js",
     "dev": "npx tsx src/main.ts",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "docs:setup-parser": "cd gold-guide-expert && python3 -m venv venv && source venv/bin/activate && pip install -r scripts/requirements.txt",
+    "docs:parse": "cd gold-guide-expert && source venv/bin/activate && python scripts/parse-pdf.py"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.32.1",
