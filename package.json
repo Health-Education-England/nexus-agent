@@ -12,7 +12,10 @@
     "dev": "npx tsx src/main.ts",
     "test": "echo \"Error: no test specified\" && exit 1",
     "docs:setup-parser": "cd gold-guide-expert && python3 -m venv venv && source venv/bin/activate && pip install -r scripts/requirements.txt",
-    "docs:parse": "cd gold-guide-expert && source venv/bin/activate && python scripts/parse-pdf.py"
+    "docs:parse": "cd gold-guide-expert && source venv/bin/activate && python scripts/parse-pdf.py",
+    "docs:clean": "npx tsx gold-guide-expert/scripts/clean-markdown.ts",
+    "docs:canonicalise": "npx tsx gold-guide-expert/scripts/canonicalise.ts",
+    "docs": "npm run docs:parse && npm run docs:clean && npm run docs:canonicalise"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.32.1",
