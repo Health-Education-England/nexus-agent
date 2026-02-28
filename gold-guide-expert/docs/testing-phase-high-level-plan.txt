@@ -1,0 +1,49 @@
+Testing phase - high-level plan
+
+This document serves as the "Hub" for the Gold Guide QA Chatbot testing phase. It outlines a step-by-step approach to building, testing, and evaluating the MVP.
+
+1. Parse the PDF to Markdown
+
+- Action: Extract the 101-page PDF into clean Markdown.
+
+- Reasoning: High-quality text extraction is foundational. The parsed Markdown is needed to programmatically generate the Golden Dataset and is also the base for further processing (e.g. RAG chunking).
+
+2. Canonicalise the Parsed Markdown with Immutable IDs & metadata
+
+- Action: Assign immutable IDs to paragraphs/sections within the parsed Markdown.
+
+- Reasoning: Immutable IDs are required for accurate, verifiable citations in both CAG and RAG approaches.
+
+3. Create the "Golden Dataset" (Development Set)
+
+- Action: Create 40-50 diverse, representative QA pairs from the parsed Gold Guide Markdown to act as our Development Set. Include exact source citations and severity labels (Critical/High/Low).
+
+- Reasoning: We need a fixed measuring stick for "what good looks like" before writing any pipeline code. This set is used actively during development to test and tune the pipeline, keeping it separate from a final "frozen" evaluation set.
+
+4. Set up the Testing Harness
+
+- Action: Adapt the existing TypeScript diy-agent Node.js project to run in a batch evaluation mode (reading questions from a file and logging outputs/latency/cost).
+
+- Reasoning: Reusing raw TypeScript avoids heavy abstractions (like LangChain or n8n) and gives us complete control over the testing loop.
+
+5. Run CAG (Cache-Augmented Generation) Baseline to isolate "reasoning failures" from "retrieval failures"
+
+- Action: Feed the entire parsed document into the LLM prompt and run the Golden Dataset through the testing harness.
+
+- Reasoning: This approach quickly establishes the "ceiling" for LLM reasoning. If CAG fails, the LLM can't understand the policy. Time to try a better reasoning model!
+Similarly, if CAG succeeds but RAG later fails, we know it's a duff retrieval pipeline.
+CAG will also set a lower bound for citation accuracy due to the higher chance of hallucinating, blending errors.
+
+6. Build & Test Naive RAG
+
+- Action: Implement basic chunking and vector search, then run the Golden Dataset through this new pipeline.
+
+- Reasoning: Allows us to compare cost, latency, and citation accuracy against the CAG baseline to prove the ROI of the retrieval engineering.
+
+7. Evaluate & Iterate (Hybrid RAG)
+
+- Action: Analyse Naive RAG failures. Add keyword search (BM25), query expansion, or regex pattern matching only where necessary.
+
+- Reasoning: Prevents over-engineering. We only add complexity (like Hybrid RAG) to solve specific, proven failures (e.g., vocabulary gaps or acronyms) identified during evaluation.
+
+

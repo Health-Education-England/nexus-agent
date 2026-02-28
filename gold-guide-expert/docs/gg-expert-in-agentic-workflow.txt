@@ -1,0 +1,109 @@
+A “Gold Guide expert” in an Agentic workflow
+
+Implementing the Gold Guide RAG/CAG as a Sub-Agent
+
+Rather than a single-purpose CAG/RAG “Gold Guide Expert” QA chatbot, it is best to think of it as part of a multi-tool/sub-agent Agentic system.
+
+In agentic design, our "Gold Guide Expert" transitions from being an isolated application to being just one Tool (or more likely a Sub-Agent in this case) within a broader Agentic workflow.
+
+Agentic tools and sub-agents
+
+In an agentic workflow, the main LLM acts as the "brain" or Orchestrator. It doesn't know the answers directly; instead, it knows how to find them using its available resources.
+
+Standard Tools: Deterministic functions like your LtftCalculatorTool. They take structured JSON input, run standard code, and return a predictable output.
+
+Sub-Agents (or "Specialist Tools"): Our "Gold Guide Expert" is probably best framed as a Sub-Agent. When the Orchestrator calls the ask_gold_guide tool, it would actually trigger the entire RAG/CAG pipeline behind the scenes. The Orchestrator hands this task off to the sub-agent. It doesn't need to know how the vector search works; it just knows "If I pass a policy question to this tool, I get back an accurate answer with citations."
+
+External APIs (MCP): Tools that interact with the “outside world” (e.g., fetch_trainee_profile_data). The Model Context Protocol (MCP) allows us to decouple our agent from our services/databases. We just spin up an MCP server which is acts as a bridge to allow the agent to e.g. read (or if we’re brave, write) data.
+
+
+The Supervisor pattern
+
+Here is how some example components could interact within our agent:
+
+```
+						┌─────────────────────────────────┐
+						│         User Query              │
+						└───────────────┬─────────────────┘
+										│
+						┌───────────────▼─────────────────┐
+						│        Orchestrator (LLM)       │
+						│  (plans, routes, synthesises)   │
+						└───────────────┬─────────────────┘
+										│
+			┌───────────────────────────┼───────────────────────────┐
+			│                           │                           │
+   ┌────────▼───────────────┐  ┌────────▼───────────────┐  ┌────────▼────────────────────┐
+   │  Gold Guide Expert     │  │   LtftCalculatorTool   │  │ fetch_trainee_profile_data  │
+   │     (Sub-Agent)        │  │        (Tool)          │  │        (MCP / API)          │
+   └────────┬───────────────┘  └────────────────────────┘  └─────────────────────────────┘
+			│
+   ┌────────▼────────────────────────────┐
+   │          RAG/CAG Pipeline           │
+   │      returns cited policy text      │
+   └─────────────────────────────────────┘
+
+						┌───────────────▼─────────────────┐
+						│  Final User Response (combined) │
+						└─────────────────────────────────┘
+```
+
+The Orchestrator can call these tools/sub-agents in parallel or sequence, then combine the outputs (and ask for clarification if needed) before returning the final response.
+
+
+Example Agentic Workflow in Action
+
+Here’s a quick example of how the Orchestrator agent could handle a complex, multi-part user query.
+
+User: "I'm currently full-time but I'm feeling burnt out. I want to drop to 80% starting next month. What are the rules around this, and how will it affect my CCT date?"
+
+Step 1: Planning & Routing (The Orchestrator)
+
+The Orchestrator LLM receives the prompt. It analyses the intent and realises it needs to do two things:
+
+Find the policy rules for LTFT
+
+Calculate the new CCT date
+
+Step 2: Tool Execution (Parallel or Sequential)
+
+Action A: The Orchestrator calls the ask_gold_guide tool with the query: "What are the rules and notice periods for a trainee dropping to 80% Less Than Full Time (LTFT) due to burnout/wellbeing?"
+
+Behind the scenes: Your RAG pipeline runs, finds the chunks, and returns: "Trainees can apply for LTFT… Standard notice is 16 weeks... [Citation: Section X.x]"
+
+Action B: The Orchestrator calls the ltft_calculator tool with the JSON:
+{ "current_cct_date": null, "current_work_percentage": null , "proposed_work_percentage": 0.8, "proposed_start_date": null}
+
+Behind the scenes…
+Missing data - ltft_calculator has some instructions on where to find data e.g. trainee profile data and returns the fields needed for a successful calculation
+
+Step 4: More tool execution
+
+Action C: The Orchestrator receives the response from the ltft_calculator and first calls fetch_trainee_profile_data tool / MCP serverto get current CCT Date. The tool then returns "current_cct_date"to the Orchestrator
+
+Step 5: Synthesis (clarification from user)
+
+The Orchestrator uses the responses from the tool calls to ask the user for clarification/ missing data to do the calculation.
+
+Step 6: Tool Execution
+
+ Action D: The Orchestrator synthesises the users response plus the data it already has and calls the ltft_calculator tool with the JSON:
+{ "current_cct_date": "2029-04-01", "current_work_percentage": 1.0, "proposed_work_percentage": 0.8, "proposed_start_date": "2026-03-25" }
+
+Behind the scenes: the function runs and returns the new CCT date (e.g., "new_cct_date": "2030-01-02", "warnings": ["Short notice (<16 weeks)"]).
+
+Step 7: Synthesis and response
+
+The Orchestrator receives the outputs from the tools. It synthesises them into a conversational, empathetic response: e.g. “Dropping to 80% for your wellbeing is fully supported (see Gold Guide, Less than full-time, section X.X…). But please note, the standard notice period is 16 weeks, so starting next month would require exceptional circumstances (see…). If approved your new CCT Date would be 02/01/2030. Here’s a full breakdown of the LTFT Calculation:…”
+
+
+
+Example plan to move from current MVP to Agentic workflow
+
+Build the Gold Guide RAG/CAG as an isolated module: All the CAG/RAG logic lives in its own folder with an isolated queryGoldGuide(question: string)function i.e. a kind of “black box” that takes in a question and returns a cited answer.
+
+Wrap it in a Tool Definition: Just like a more deterministic calculation tool (e.gLtftCalculatorTool) we create a GoldGuideTool. Its description will tell the Orchestrator agent when and how to use it e.g. "Use this tool to answer any questions about…[e.g. list the table of contents + intro summary?]… only giving answers that have the correct citations…"
+
+Introduce MCP later (if it hasn’t been overtaken by something else by then!): Once we’re happy with the Orchestrator agent “talking” to the Calculator and the Gold Guide, we could expand its capabilities via MCP server e.g. one that gives the agent indirect DB access (via the MCP server “bridge”) to the user’s trainee’s profile data via a get_trainee_profile tool.
+
+ 

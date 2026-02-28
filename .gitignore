@@ -1,0 +1,14 @@
+node_modules/
+dist/
+.env
+*.log
+conversations/
+evaluation-results-*.json
+
+# Ignore /gold-guide-expert/data but keep structure and README
+gold-guide-expert/data/*
+!gold-guide-expert/data/*/
+!gold-guide-expert/data/README.md
+gold-guide-expert/data/*/*
+!gold-guide-expert/data/*/.gitkeep
+.DS_Store
