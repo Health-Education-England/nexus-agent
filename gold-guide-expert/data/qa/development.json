@@ -1,0 +1,250 @@
+[
+  {
+    "id": "dev-001",
+    "question": "What is the maximum continuous period a doctor can be out of training before the Postgraduate Dean must review their training number?",
+    "expectedAnswer": "More than two years. Per paragraph 1.15 i, if a postgraduate doctor in training is unlikely to undertake any training for a continuous period of more than two years, the Postgraduate Dean should review maintenance of the training number/contract.",
+    "requiredCitations": ["1.15 i"],
+    "severity": "CRITICAL",
+    "tags": ["single-hop", "procedural"],
+    "notes": "Basic procedural knowledge on maintaining a training number."
+  },
+  {
+    "id": "dev-002",
+    "question": "Do doctors training on a Less Than Full-Time (LTFT) basis have different requirements for achieving a Certificate of Completion of Training (CCT)?",
+    "expectedAnswer": "No, they must meet the same requirements as those who train on a full-time basis to achieve a CCT.",
+    "requiredCitations": ["3.115"],
+    "severity": "HIGH",
+    "tags": ["single-hop", "ltft"],
+    "notes": "Important conditional rule regarding LTFT training parity."
+  },
+  {
+    "id": "dev-003",
+    "question": "If a trainee extends their training following an ARCP Outcome 3 and they are an LTFT trainee, is the extension based on fixed-term time or pro rata?",
+    "expectedAnswer": "The extension will be on a pro rata basis, although there is an option for a fixed-term time extension if there are sound educational reasons for it.",
+    "requiredCitations": ["3.133 iii"],
+    "severity": "HIGH",
+    "tags": ["multi-hop", "ltft", "arcp", "conditional"],
+    "notes": "Bridges LTFT extension rules and ARCP Outcome 3 consequences."
+  },
+  {
+    "id": "dev-004",
+    "question": "What is the difference between an ARCP Outcome 2 and Outcome 3?",
+    "expectedAnswer": "Outcome 2 means development of capabilities is required without additional training time, whereas Outcome 3 means development and additional training time are required.",
+    "requiredCitations": ["4.89 ii"],
+    "severity": "CRITICAL",
+    "tags": ["factual", "arcp"],
+    "notes": "Core fundamental ARCP knowledge."
+  },
+  {
+    "id": "dev-005",
+    "question": "Should a Postgraduate Dean always be present at an ARCP panel meeting where an Outcome 3 or 4 is possible?",
+    "expectedAnswer": "It is considered 'good practice' for the Postgraduate Dean to nominate a deputy to be present at any panel meeting involving cases where a postgraduate doctor in training could have an ARCP Outcome 3 or 4.",
+    "requiredCitations": ["4.71"],
+    "severity": "LOW",
+    "tags": ["single-hop", "arcp", "best-practice"],
+    "notes": "Tests the explicit language around best practice vs strict requirement."
+  },
+  {
+    "id": "dev-006",
+    "question": "What happens if a postgraduate doctor has been out of training for any reason for more than two years and wishes to return?",
+    "expectedAnswer": "The Postgraduate Dean will assess their suitability to return to (and continue in) a specialty training programme in accordance with paragraph 3.100 iii.",
+    "requiredCitations": ["1.15 ii"],
+    "severity": "CRITICAL",
+    "tags": ["procedural", "cross-reference"]
+  },
+  {
+    "id": "dev-007",
+    "question": "What information must a trainee agree to provide in advance of taking time out of programme (OOP)?",
+    "expectedAnswer": "They must agree with the Postgraduate Dean the period of time, complete the appropriate OOP document, continue agreed research (if OOPR), state intention to return to FPCC or CCT, provide an up-to-date email address, and maintain GMC registration with a licence to practise.",
+    "requiredCitations": ["3.54"],
+    "severity": "HIGH",
+    "tags": ["list", "procedural", "oop"]
+  },
+  {
+    "id": "dev-008",
+    "question": "Does reference to a Postgraduate Dean in the Gold Guide always mean just the Dean themselves?",
+    "expectedAnswer": "No, reference to Postgraduate Deans includes those nominated by them to act on their behalf, such as Deputy/Associate Deans, Foundation School Directors, Heads of School, and Training Programme Directors.",
+    "requiredCitations": ["1.8"],
+    "severity": "LOW",
+    "tags": ["definitions"]
+  },
+  {
+    "id": "dev-009",
+    "question": "What must the educational supervisor do if they have concerns about a trainee being considered for an Outcome 3 before the ARCP?",
+    "expectedAnswer": "They must make the trainee aware of the concerns, document them in the educational portfolio, and discuss them with the trainee prior to the ARCP so the trainee is aware of the implications and likelihood of additional training time.",
+    "requiredCitations": ["4.57"],
+    "severity": "CRITICAL",
+    "tags": ["procedural", "arcp", "safeguarding"],
+    "notes": "A procedural fairness question on preparing for bad outcomes."
+  },
+  {
+    "id": "dev-010",
+    "question": "Is an applicant for specialty training required to go through an open, fair and transparent process even if it is just a locum appointment for training?",
+    "expectedAnswer": "Yes. The GMC requires that doctors wishing to enter specialty training, whether through core/specialty programmes or locum appointments for training, apply through an open, fair and transparent process.",
+    "requiredCitations": ["1.5"],
+    "severity": "HIGH",
+    "tags": ["single-hop", "recruitment"]
+  },
+  {
+    "id": "dev-011",
+    "question": "How early before my CCT date can I be interviewed for a consultant post?",
+    "expectedAnswer": "You must not be interviewed more than six calendar months prior to your anticipated CCT date. You must only apply if progress has been satisfactory (Outcome 1 at last ARCP) and if it is anticipated that the final ARCP outcome will recommend that training is completed by the time the suggested CCT date is reached.",
+    "requiredCitations": ["3.95"],
+    "severity": "CRITICAL",
+    "tags": ["single-hop", "consultant-application", "procedural"],
+    "notes": "Common real-world question from senior trainees nearing CCT."
+  },
+  {
+    "id": "dev-012",
+    "question": "I've just received an ARCP Outcome 4. What does that actually mean for my training number?",
+    "expectedAnswer": "An Outcome 4 means you are required to leave the training programme before completion, with identified capabilities achieved or with an identified and specified level of training attained. Your training number/contract will be withdrawn once the appeals process (where relevant) has been concluded and the appeal rejected.",
+    "requiredCitations": ["4.160 iii", "3.100 ii"],
+    "severity": "CRITICAL",
+    "tags": ["multi-hop", "arcp", "procedural"],
+    "notes": "High-stakes question bridging ARCP outcome definitions and training number withdrawal rules."
+  },
+  {
+    "id": "dev-013",
+    "question": "What's the minimum duration for a Locum Appointment for Training (LAT) in specialty training, and does a shorter stint count towards my CCT?",
+    "expectedAnswer": "LAT posts must be for a minimum of three months. If you do not complete three months before acquiring a numbered post or further LAT, the period will not count towards training unless it is linked seamlessly (i.e. no delay) to an ST3 post with an NTN, or to another LAT post in the same locality and programme.",
+    "requiredCitations": ["3.70", "3.80"],
+    "severity": "HIGH",
+    "tags": ["multi-hop", "locum", "conditional"],
+    "notes": "Practical scenario for doctors moving between LAT and numbered posts."
+  },
+  {
+    "id": "dev-014",
+    "question": "Can I get a CCT just by doing LAT posts without ever entering a numbered training programme?",
+    "expectedAnswer": "No. Doctors cannot obtain a CCT with only LAT appointments. LAT posts can contribute towards a CCT only once you have been competitively selected for a relevant approved specialty training programme. However, evidence of capabilities gained in LATs can be used towards a full CESR application.",
+    "requiredCitations": ["3.81", "3.78"],
+    "severity": "CRITICAL",
+    "tags": ["multi-hop", "locum", "cct"],
+    "notes": "Common misconception among doctors in LAT posts about the CCT pathway."
+  },
+  {
+    "id": "dev-015",
+    "question": "I want to go LTFT but I'm not sure if I need a specific qualifying reason. Who is eligible?",
+    "expectedAnswer": "All postgraduate doctors in training can apply for LTFT training. The only requirement is a well-founded individual reason. All well-founded reasons will be considered, though support may be dependent on the capacity of the programme and available resources as well as compliance with relevant legislation.",
+    "requiredCitations": ["3.123", "3.124"],
+    "severity": "HIGH",
+    "tags": ["single-hop", "ltft", "eligibility"],
+    "notes": "Very common question — the open eligibility criteria are often not well known."
+  },
+  {
+    "id": "dev-016",
+    "question": "Am I allowed to sit in my ARCP panel while they decide my outcome?",
+    "expectedAnswer": "No. The postgraduate doctor in training must not be present at the panel considering the outcome. However, following the ARCP, there will be a meeting with you to inform you of and explain the outcome, and to agree the objectives and learning plan.",
+    "requiredCitations": ["4.83", "4.86"],
+    "severity": "HIGH",
+    "tags": ["single-hop", "arcp", "procedural"],
+    "notes": "Practical question trainees ask before their first ARCP."
+  },
+  {
+    "id": "dev-017",
+    "question": "I've been given an ARCP Outcome 3 and I want to challenge it. Can I appeal, and how long do I have?",
+    "expectedAnswer": "Yes. You have the right of appeal against an Outcome 3/10.2 (extension of indicative training time) or Outcome 4 (release from the programme). Appeal requests must be made in writing to the Postgraduate Dean within ten working days of being notified of the decision, and must specifically state the grounds for appeal.",
+    "requiredCitations": ["4.169", "4.170"],
+    "severity": "CRITICAL",
+    "tags": ["multi-hop", "arcp", "appeals", "procedural"],
+    "notes": "Time-sensitive procedural knowledge — missing the 10 working day window forfeits the right."
+  },
+  {
+    "id": "dev-018",
+    "question": "What's the difference between a 'review' and an 'appeal' of an ARCP outcome?",
+    "expectedAnswer": "A review is where the individuals or group who originally made the decision return to it to reconsider whether it was appropriate; it does not require the panel to be formally reconvened and can be undertaken virtually. An appeal is where the decision is considered by a different individual or group who must not have played a part in the original decision or review. Both can consider newly submitted information but would not normally include capabilities acquired after the date of the ARCP outcome.",
+    "requiredCitations": ["4.164", "4.165"],
+    "severity": "HIGH",
+    "tags": ["factual", "arcp", "appeals"],
+    "notes": "The distinction matters for understanding Outcome 2 (review only, final) vs Outcome 3/4 (full appeal available)."
+  },
+  {
+    "id": "dev-019",
+    "question": "Does my educational supervisor have to discuss their report with me before it goes to the ARCP panel?",
+    "expectedAnswer": "Yes. The educational supervisor's report should be discussed with you prior to submission to the ARCP panel. The report and any discussion must be evidence-based, timely, open and honest. If such a discussion cannot take place, the educational supervisor must report the reasons to the ARCP panel in advance of the panel meeting.",
+    "requiredCitations": ["4.56"],
+    "severity": "HIGH",
+    "tags": ["single-hop", "arcp", "supervision"],
+    "notes": "Important procedural fairness safeguard that trainees need to be aware of."
+  },
+  {
+    "id": "dev-020",
+    "question": "I've witnessed poor quality patient care at my hospital but I'm worried about raising it. What does the Gold Guide say I should do?",
+    "expectedAnswer": "You should follow your employer's whistleblowing policy or that of NHSE WTE/NES/HEIW/NIMDTA. If you feel it is not appropriate to raise a concern with your employer, or are concerned about suffering detriment, NHSE WTE, NES, HEIW or NIMDTA will offer appropriate guidance and signposting to support you in raising concerns.",
+    "requiredCitations": ["5.5", "5.15"],
+    "severity": "HIGH",
+    "tags": ["multi-hop", "employment", "patient-safety", "whistleblowing"],
+    "notes": "Patient safety and professional duty scenario. Tests synthesis across two paragraphs in Section 5."
+  },
+  {
+    "id": "dev-021",
+    "question": "I'm a military specialty trainee and I'm thinking of leaving the armed forces early. What happens to my Defence Deanery NTN?",
+    "expectedAnswer": "If you leave the armed forces through premature voluntary retirement, you will be required to relinquish your Defence Deanery NTN. If you wish to continue specialty training as a civilian, you will have to seek an appropriate vacancy in a civilian training programme, for which you will have to compete.",
+    "requiredCitations": ["2.25"],
+    "severity": "LOW",
+    "tags": ["single-hop", "defence", "training-numbers"],
+    "notes": "Niche but important for the small cohort of military trainees."
+  },
+  {
+    "id": "dev-022",
+    "question": "My health has deteriorated and I need time off. Can my training be paused, and how does that affect my ARCP?",
+    "expectedAnswer": "Pausing training is a decision normally taken outside of the ARCP process. It is a neutral action that should be agreed with you as early as reasonably practical, then approved by the Postgraduate Dean and documented. It must be supported with suitable evidence such as occupational health advice. The ARCP panel will consider any period when training time was paused and may issue an N code for that period. The expected CCT date will also be adjusted.",
+    "requiredCitations": ["4.116", "4.117"],
+    "severity": "HIGH",
+    "tags": ["multi-hop", "arcp", "health", "procedural"],
+    "notes": "Common real-world scenario — intersects health, pausing, and ARCP coding."
+  },
+  {
+    "id": "dev-023",
+    "question": "I'm currently training LTFT but I want to go back to full-time. What's the process?",
+    "expectedAnswer": "You must first inform the Postgraduate Dean. A suitable full-time placement may not be immediately available, depending on your current LTFT arrangements and post availability in the training programme. NHSE WTE, NES, HEIW or NIMDTA must be informed of the planned start date for the return to full-time training.",
+    "requiredCitations": ["3.129"],
+    "severity": "LOW",
+    "tags": ["single-hop", "ltft", "procedural"],
+    "notes": "Practical follow-up question for LTFT trainees whose circumstances change."
+  },
+  {
+    "id": "dev-024",
+    "question": "How long can I do OOPR for, and can I extend it beyond the usual limit?",
+    "expectedAnswer": "Normally a maximum of three years is agreed for OOPR. If you need to exceed this, a request must be submitted to the Postgraduate Dean at least six months prior to the extension commencing. The request must come from the named academic supervisor, who must set out clear reasons for the extension.",
+    "requiredCitations": ["4.155"],
+    "severity": "HIGH",
+    "tags": ["single-hop", "oop", "academic", "procedural"],
+    "notes": "Important timeline question for academic trainees mid-PhD."
+  },
+  {
+    "id": "dev-025",
+    "question": "Do I need to share my portfolio with my new supervisors every time I rotate to a different placement?",
+    "expectedAnswer": "Yes. You must maintain an educational portfolio that is programme-specific and covers all aspects of your training, and share this with your educational supervisors as you move through your rotational programme. The transfer of educational information from placement to placement is fundamental to the training process and applies to every postgraduate doctor in training.",
+    "requiredCitations": ["5.16"],
+    "severity": "LOW",
+    "tags": ["single-hop", "employment", "supervision", "portfolio"],
+    "notes": "Basic but important responsibility that new trainees need to know about."
+  },
+  {
+    "id": "dev-026",
+    "question": "Can I do sub-specialty training at the same time as my main specialty programme, or do I have to wait until I'm on the specialist register?",
+    "expectedAnswer": "Both options are available. You can pursue sub-specialty training during your parent specialty training programme, or after you have been entered on the specialist register through competitive entry to an approved sub-specialty training programme. If training during your programme, you should apply for the sub-specialty certificate at the same time as your CCT.",
+    "requiredCitations": ["3.92", "3.93", "3.94"],
+    "severity": "LOW",
+    "tags": ["multi-hop", "sub-specialty", "cct"],
+    "notes": "Career planning question that comes up during higher specialty training."
+  },
+  {
+    "id": "dev-027",
+    "question": "Who is my Responsible Officer for revalidation while I'm in a training programme?",
+    "expectedAnswer": "Your Responsible Officer (RO) is your Postgraduate Dean (or Medical Director in HEIW and NIMDTA). Your designated body is the locality in NHSE WTE, NES, HEIW or NIMDTA responsible for the management of your training programme. Information to inform the revalidation recommendation to the GMC comes from the ARCP.",
+    "requiredCitations": ["5.12", "4.134"],
+    "severity": "HIGH",
+    "tags": ["multi-hop", "revalidation", "definitions"],
+    "notes": "Common confusion point — trainees often don't know who their RO is."
+  },
+  {
+    "id": "dev-028",
+    "question": "Do I need both an educational supervisor and a clinical supervisor, or can one person do both roles?",
+    "expectedAnswer": "All postgraduate doctors in training must have an educational and named clinical supervisor for each placement. It is normal practice for these roles to be undertaken by different people, but in some elements of a rotation the same individual may provide both educational and clinical supervision. In that case, the respective roles and responsibilities should be clearly defined. In integrated academic training, you will also have a named academic supervisor.",
+    "requiredCitations": ["2.62"],
+    "severity": "CRITICAL",
+    "tags": ["single-hop", "supervision", "definitions"],
+    "notes": "Fundamental supervisory structure question. Tests the nuance around dual role."
+  }
+]

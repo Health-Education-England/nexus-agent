@@ -12,4 +12,5 @@ gold-guide-expert/data/*
 gold-guide-expert/data/*/*
 !gold-guide-expert/data/*/.gitkeep
 !gold-guide-expert/data/markdown/gold_guide_10th_ed_base.md
+!gold-guide-expert/data/qa/*.json
 .DS_Store

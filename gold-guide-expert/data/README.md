@@ -76,3 +76,25 @@ npm run docs:canonicalise
 _Outputs: `data/raw/gold_guide_canonical.jsonl`_
 
 _(You can run the entire pipeline top-to-bottom by typing `npm run docs` in the root folder)._
+
+## Step 3: Generating the "Golden Dataset" (Development QA Set)
+
+To enable automated evaluation of the naive LLM generation, we established a "baseline" dataset to measure the correctness and precision of AI answers.
+
+A seed JSON array of Question/Answer test cases was created at `data/qa/development.json`, featuring 10 manually curated, diverse, and representative questions sourced from `gold_guide_canonical.jsonl`.
+
+Each test case consists of:
+
+- An `id` (e.g., `"dev-001"`)
+- The `question`
+- The `expectedAnswer`
+- The `requiredCitations` specifying exactly what Canonical IDs the model must cite (e.g., `["1.15 i"]`)
+- A `severity` weight (`CRITICAL`, `HIGH` or `LOW`) for pass/fail scoring heuristics
+- Additional tags to help classify failures (e.g., `"single-hop"`, `"ltft"`, `"cross-reference"`)
+
+A `loadDataset()` utility was implemented in the evaluation module (`gold-guide-expert/evaluation/config.ts`) to programmatically load this golden dataset for testing execution, available via testing scripts.
+
+```bash
+# TODO (Requires test harness implementation)
+npm run eval:dev
+```
