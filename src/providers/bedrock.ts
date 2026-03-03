@@ -13,6 +13,7 @@ import type {
   ContentBlock,
   GenerateResponseOptions,
   Message,
+  ModelUsage,
   ModelProvider,
   ModelResponse,
   ProviderToolChoice,
@@ -46,6 +47,12 @@ export class BedrockProvider implements ModelProvider {
     systemPrompt?: string,
     options?: GenerateResponseOptions
   ): Promise<ModelResponse> {
+    if (options?.promptCaching) {
+      throw new Error(
+        "Prompt caching controls for Bedrock not implemented yet (see https://docs.aws.amazon.com/bedrock/latest/userguide/prompt-caching.html for more info)."
+      );
+    }
+
     const bedrockMessages = messages.map(m => this.toBedrockMessage(m));
     const resolvedToolChoice = options?.toolChoice ?? this.config.toolChoice;
 
@@ -147,10 +154,56 @@ export class BedrockProvider implements ModelProvider {
       }
     }
 
+    const usage = this.mapUsage(
+      response.usage as Record<string, unknown> | undefined
+    );
+    const latencyMs =
+      response.metrics && typeof response.metrics.latencyMs === "number"
+        ? response.metrics.latencyMs
+        : undefined;
+
     return {
       content,
-      stop_reason: normalizeStopReason(response.stopReason)
+      stop_reason: normalizeStopReason(response.stopReason),
+      usage,
+      providerMetrics: {
+        latencyMs
+      }
     };
+  }
+
+  private mapUsage(
+    usage: Record<string, unknown> | undefined
+  ): ModelUsage | undefined {
+    if (!usage) {
+      return undefined;
+    }
+
+    const inputTokens =
+      typeof usage.inputTokens === "number" ? usage.inputTokens : 0;
+    const outputTokens =
+      typeof usage.outputTokens === "number" ? usage.outputTokens : 0;
+
+    const mappedUsage: ModelUsage = {
+      inputTokens,
+      outputTokens
+    };
+
+    if (typeof usage.totalTokens === "number") {
+      mappedUsage.totalTokens = usage.totalTokens;
+    } else {
+      mappedUsage.totalTokens = inputTokens + outputTokens;
+    }
+
+    if (typeof usage.cacheReadInputTokens === "number") {
+      mappedUsage.cacheReadInputTokens = usage.cacheReadInputTokens;
+    }
+
+    if (typeof usage.cacheWriteInputTokens === "number") {
+      mappedUsage.cacheCreationInputTokens = usage.cacheWriteInputTokens;
+    }
+
+    return mappedUsage;
   }
 
   private mapToolChoice(

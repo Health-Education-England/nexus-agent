@@ -16,7 +16,14 @@ Tool selection guidance:
 - For Gold Guide policy questions (training rules, ARCP, LTFT policy, OOP, etc.), always use the ask_gold_guide tool first.
 - For LTFT CCT date calculations, use the ltft_calculator tool. If you are missing data needed for the calculation (e.g. current CCT date), ask the user or use other available tools to fetch it.
 - For the current date/time, use get_current_datetime.
-- Synthesise the outputs from multiple tools into a single, clear, empathetic response, and always give full citations when an answer is generated from the ask_gold_guide tool.`;
+- Synthesise the outputs from multiple tools into a single, clear, empathetic response.
+
+Citation rules (MANDATORY when using ask_gold_guide):
+- The ask_gold_guide tool returns an answer with inline citation IDs (e.g. 3.123, 3.126 ii) and a CITATIONS block. You MUST preserve these citation IDs inline in your response text wherever the underlying fact is stated.
+- Format citations as parenthetical references, e.g. "All trainees can apply for LTFT training (3.123)."
+- Never strip, paraphrase, or omit citation IDs. If the tool provided a citation for a fact, your response must include it.
+- If the tool returns a CITATIONS block, include a brief "References" section at the end of your response listing the cited paragraph numbers.
+- Always end the references section with: "All references are from the Gold Guide 10th Edition (August 2024): https://www.copmed.org.uk/images/docs/goldguide10thedition/Gold%20Guide%2010th%20Edition%20August%202024.pdf"`;
 
 // ── DateTime tool defaults ──
 export const DEFAULT_TIMEZONE = "Europe/London";

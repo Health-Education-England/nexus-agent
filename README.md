@@ -57,7 +57,6 @@ src/
 gold-guide-expert/          # Self-contained Gold Guide domain module
 ├── core/                   # Shared library (stateless, no agent concerns)
 │   ├── types.ts            # PipelineConfig, GoldGuideResult, Citation, etc.
-│   ├── pipeline-registry.ts # Single source of truth for all pipeline configs
 │   ├── query-gold-guide.ts # queryGoldGuide() — shared entry point
 │   ├── retrieval/          # Pluggable retrieval pipeline implementations
 │   │   ├── cag-pipeline.ts
@@ -67,6 +66,7 @@ gold-guide-expert/          # Self-contained Gold Guide domain module
 ├── evaluation/             # Test harness (imports core/)
 │   ├── types.ts            # QAItem, ScoredResult, EvalRunSummary, etc.
 │   ├── config.ts           # Dataset loader + eval pipeline ID aliases
+│   ├── pipeline-registry.ts # Single source of truth for all pipeline configs
 │   ├── runner.ts           # Batch loop: reads QA set → queryGoldGuide → judge
 │   ├── judge.ts            # LLM-as-judge scoring
 │   ├── metrics.ts          # Aggregate metric computation
@@ -110,9 +110,15 @@ cp .env.example .env
 # Interactive mode (Orchestrator with all tools)
 npm run dev
 
-# Run evaluation harness
-npm run eval
+# Run evaluation harness (development dataset)
+npm run -s eval:dev
+
+# Optional: single-item low-cost run for quick test
+npm run -s eval:dev -- --limit 1
 ```
+
+For detailed Gold Guide evaluation commands, judge modes, model override options,
+and artifact locations, see `gold-guide-expert/README.md`.
 
 ## Environment Variables (WIP)
 

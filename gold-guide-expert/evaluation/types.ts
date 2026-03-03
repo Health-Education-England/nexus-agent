@@ -29,7 +29,7 @@ export type QAItem = {
 
   /** Tags for filtering (e.g. "multi-hop", "acronym", "adversarial") */
   tags?: string[];
-}
+};
 
 /**
  * The scored result for a single QA item after evaluation.
@@ -58,7 +58,15 @@ export type ScoredResult = {
 
   /** Failure classification, if any */
   failureType?: FailureType;
-}
+
+  /** Metadata from the LLM judge */
+  judgeMeta?: {
+    confidence?: number;
+    rationale?: string;
+    /** Present only when the judge encountered an error */
+    error?: string;
+  };
+};
 
 /**
  * Failure taxonomy from research-finding-summary.txt §7.6
@@ -101,4 +109,12 @@ export type EvalRunSummary = {
     totalInputTokens: number;
     totalOutputTokens: number;
   };
-}
+
+  /** Effective runtime model choices for this run */
+  effectiveModels?: {
+    answer: string;
+    judge: string;
+    answerOverridden: boolean;
+    judgeOverridden: boolean;
+  };
+};

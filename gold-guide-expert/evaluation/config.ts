@@ -125,11 +125,20 @@ export const EVAL_PIPELINE_IDS = {
   /** CAG baseline — testing-phase step 5 */
   cagBaseline: "cag-sonnet-anthropic",
 
+  /** CAG cheap baseline */
+  cagCheap: "cag-haiku-anthropic",
+
   /** Naive RAG — testing-phase step 6 */
   naiveRag: "naive-rag-sonnet-anthropic",
 
+  /** Naive RAG cheap */
+  naiveRagCheap: "naive-rag-haiku-anthropic",
+
   /** Hybrid RAG — testing-phase step 7 */
-  hybridRag: "hybrid-rag-sonnet-anthropic"
+  hybridRag: "hybrid-rag-sonnet-anthropic",
+
+  /** Hybrid RAG cheap */
+  hybridRagCheap: "hybrid-rag-haiku-anthropic"
 } as const satisfies Record<string, PipelineId>;
 
 /** Re-export the full registry and lookup helper for direct use */

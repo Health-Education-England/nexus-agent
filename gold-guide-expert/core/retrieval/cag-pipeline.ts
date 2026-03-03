@@ -18,6 +18,67 @@ import type {
   RetrievedChunk,
   PipelineConfig
 } from "../types.js";
+import { readFile } from "node:fs/promises";
+import path from "node:path";
+
+type CanonicalRecord = {
+  id: string;
+  text: string;
+  metadata?: Record<string, unknown>;
+};
+
+let canonicalChunksCache: Promise<RetrievedChunk[]> | undefined;
+
+async function loadCanonicalChunks(): Promise<RetrievedChunk[]> {
+  if (canonicalChunksCache) {
+    return canonicalChunksCache;
+  }
+
+  canonicalChunksCache = (async () => {
+    const filePath = path.join(
+      process.cwd(),
+      "gold-guide-expert/data/raw/gold_guide_canonical.jsonl"
+    );
+
+    const fileContents = await readFile(filePath, "utf-8");
+    const lines = fileContents
+      .split("\n")
+      .map(line => line.trim())
+      .filter(line => line.length > 0);
+
+    const chunks: RetrievedChunk[] = [];
+
+    for (let index = 0; index < lines.length; index += 1) {
+      const line = lines[index];
+
+      let parsed: CanonicalRecord;
+      try {
+        parsed = JSON.parse(line) as CanonicalRecord;
+      } catch (error) {
+        throw new Error(
+          `Failed to parse canonical JSONL at line ${index + 1}: ${error instanceof Error ? error.message : String(error)}`
+        );
+      }
+
+      if (!parsed.id || !parsed.text) {
+        throw new Error(
+          `Invalid canonical record at line ${index + 1}: expected id and text.`
+        );
+      }
+
+      chunks.push({
+        canonicalId: parsed.id,
+        content: parsed.text,
+        score: 1,
+        metadata: parsed.metadata
+      });
+    }
+
+    return chunks;
+  })();
+
+  return canonicalChunksCache;
+}
 
 export class CagPipeline implements RetrievalPipeline {
   readonly name = "cag" as const;
@@ -26,9 +87,6 @@ export class CagPipeline implements RetrievalPipeline {
     _query: string,
     _config: PipelineConfig
   ): Promise<RetrievedChunk[]> {
-    // For CAG, we bypass granular retrieval and load the whole canonicalised
-    // markdown document. It may be returned as a single massive chunk or
-    // handled entirely by the prompt builder fetching the cached document.
-    throw new Error("CagPipeline.retrieve() not yet implemented.");
+    return loadCanonicalChunks();
   }
 }

@@ -1,7 +1,8 @@
-// ── Gold Guide Evaluation Harness — public API ──
+// ── Gold Guide Testing/Evaluation Harness
 
 export { runEvaluation } from "./runner.js";
 export { judge } from "./judge.js";
+export type { JudgeOptions } from "./judge.js";
 export { computeMetrics } from "./metrics.js";
 export {
   loadDataset,

@@ -7,9 +7,9 @@
  *
  * Architectural Role:
  * This is the refined target pipeline (Step 7 of the test plan).
- * It merges Semantic (Vector) search with Sparse (BM25/Keyword) search and 
- * regular expressions (for structured document sections), combining the results 
- * via Reciprocal Rank Fusion (RRF) before optionally using a Cross-Encoder 
+ * It merges Semantic (Vector) search with Sparse (BM25/Keyword) search and
+ * regular expressions (for structured document sections), combining the results
+ * via Reciprocal Rank Fusion (RRF) before optionally using a Cross-Encoder
  * to re-rank the final chunks.
  */
 
@@ -23,8 +23,8 @@ export class HybridPipeline implements RetrievalPipeline {
   readonly name = "hybrid-rag" as const;
 
   async retrieve(
-    _query: string,
-    _config: PipelineConfig
+    query: string,
+    config: PipelineConfig
   ): Promise<RetrievedChunk[]> {
     // TODO:
     // 1. Run semantic vector search

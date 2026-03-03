@@ -15,22 +15,49 @@ export const PIPELINE_REGISTRY = {
 
   "cag-sonnet-anthropic": {
     pipeline: "cag",
-    model: "claude-sonnet-4-20250514",
-    provider: "anthropic"
+    provider: "anthropic",
+    models: {
+      answer: "claude-sonnet-4-20250514",
+      judge: "claude-sonnet-4-20250514"
+    }
+  },
+
+  "cag-haiku-anthropic": {
+    pipeline: "cag",
+    provider: "anthropic",
+    models: {
+      answer: "claude-3-5-haiku-latest",
+      judge: "claude-sonnet-4-20250514"
+    }
   },
 
   // "cag-gemini-flash": {
   //   pipeline: "cag",
-  //   model: "gemini-2.0-flash",
   //   provider: "...",          // add when provider support exists
+  //   models: { answer: "gemini-2.0-flash", judge: "..." },
   // },
 
   // ── Naive RAG configs (testing-phase step 6) ──
 
   "naive-rag-sonnet-anthropic": {
     pipeline: "naive-rag",
-    model: "claude-sonnet-4-20250514",
     provider: "anthropic",
+    models: {
+      answer: "claude-sonnet-4-20250514",
+      judge: "claude-sonnet-4-20250514"
+    },
+    topK: 5,
+    chunkSize: 2000,
+    chunkOverlap: 200
+  },
+
+  "naive-rag-haiku-anthropic": {
+    pipeline: "naive-rag",
+    provider: "anthropic",
+    models: {
+      answer: "claude-3-5-haiku-latest",
+      judge: "claude-sonnet-4-20250514"
+    },
     topK: 5,
     chunkSize: 2000,
     chunkOverlap: 200
@@ -40,8 +67,23 @@ export const PIPELINE_REGISTRY = {
 
   "hybrid-rag-sonnet-anthropic": {
     pipeline: "hybrid-rag",
-    model: "claude-sonnet-4-20250514",
     provider: "anthropic",
+    models: {
+      answer: "claude-sonnet-4-20250514",
+      judge: "claude-sonnet-4-20250514"
+    },
+    topK: 5,
+    chunkSize: 2000,
+    chunkOverlap: 200
+  },
+
+  "hybrid-rag-haiku-anthropic": {
+    pipeline: "hybrid-rag",
+    provider: "anthropic",
+    models: {
+      answer: "claude-3-5-haiku-latest",
+      judge: "claude-sonnet-4-20250514"
+    },
     topK: 5,
     chunkSize: 2000,
     chunkOverlap: 200

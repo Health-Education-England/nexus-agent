@@ -9,11 +9,25 @@
 export type PipelineConfig = {
   pipeline: "cag" | "naive-rag" | "hybrid-rag";
 
-  model: string;
-
+  /** Provider for all models in this config (split per-model later if needed). */
   provider: "anthropic" | "bedrock";
 
-  // RAG only options
+  /**
+   * Models used for each task in the pipeline.
+   *
+   * - `answer`    — synthesises the response from retrieved context (always required)
+   * - `judge`     — LLM-as-judge during evaluation (defaults to `answer` if omitted)
+   * - `embedding` — embedding model for RAG retrieval (future)
+   * - `reranker`  — re-ranking model for hybrid RAG (future)
+   */
+  models: {
+    answer: string;
+    judge?: string;
+    embedding?: string;
+    reranker?: string;
+  };
+
+  // RAG-only options
   topK?: number;
   chunkSize?: number;
   chunkOverlap?: number;

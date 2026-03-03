@@ -95,6 +95,6 @@ Each test case consists of:
 A `loadDataset()` utility was implemented in the evaluation module (`gold-guide-expert/evaluation/config.ts`) to programmatically load this golden dataset for testing execution, available via testing scripts.
 
 ```bash
-# TODO (Requires test harness implementation)
+# Run the development evaluation set
 npm run eval:dev
 ```

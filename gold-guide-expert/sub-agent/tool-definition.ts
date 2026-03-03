@@ -10,16 +10,26 @@
  */
 
 import type { ToolDefinition, ModelProvider } from "../../src/agent/types.js";
-import { PRODUCTION_PIPELINE_ID } from "./production-config.js";
+import type { PipelineConfig } from "../core/types.js";
+import {
+  askGoldGuide,
+  formatResultForOrchestrator
+} from "./gold-guide-sub-agent.js";
 
-import { askGoldGuide } from "./gold-guide-sub-agent.js";
+export type GoldGuideToolOptions = {
+  /** Provider for the sub-agent LLM call (can differ from the orchestrator's provider). */
+  provider: ModelProvider;
+
+  /** Override pipeline config (defaults to PRODUCTION_CONFIG). */
+  config?: PipelineConfig;
+};
 
 export function createGoldGuideExpertTool(
-  provider: ModelProvider
+  options: GoldGuideToolOptions
 ): ToolDefinition {
   return {
     name: "ask_gold_guide",
-    description: `Use this tool to answer any question about  Postgraduate Foundation and
+    description: `Use this tool to answer any question about Postgraduate Foundation and
 Specialty Training in the UK. This applies to all doctors in core and specialty training (including individuals from
 non-medical careers training in public health), and to all foundation doctors across the UK.  
 The tool returns an accurate, cited answer drawn from the official Gold Guide (10th Edition) document.
@@ -36,12 +46,11 @@ Only use this tool for policy-related questions. For Less than full-time (LTFT) 
     },
     execute: async (input: Record<string, unknown>): Promise<string> => {
       const question = input.question as string;
-
-      // TODO: add askGoldGuide() logic e.g.
-      // const result = await askGoldGuide(question, { provider, config: PRODUCTION_CONFIG });
-      // return formatResultForOrchestrator(result);
-
-      return `[Gold Guide Expert — not yet implemented (pipeline: ${PRODUCTION_PIPELINE_ID})] Received question: "${question}"`;
+      const result = await askGoldGuide(question, {
+        provider: options.provider,
+        config: options.config
+      });
+      return formatResultForOrchestrator(result);
     }
   };
 }

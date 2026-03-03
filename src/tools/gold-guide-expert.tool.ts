@@ -8,3 +8,4 @@
  *   gold-guide-expert/core/query-gold-guide.ts  — shared stateless query function
  */
 export { createGoldGuideExpertTool } from "../../gold-guide-expert/sub-agent/index.js";
+export type { GoldGuideToolOptions } from "../../gold-guide-expert/sub-agent/tool-definition.js";
