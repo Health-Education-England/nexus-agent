@@ -1,4 +1,4 @@
-import type { ModelResponse } from "../agent/types.js";
+import type { ModelResponse } from "../providers/types.js";
 
 export function normalizeStopReason(
   stopReason: unknown

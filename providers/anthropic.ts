@@ -7,8 +7,8 @@ import type {
   ModelProvider,
   ModelResponse,
   ToolDefinition
-} from "../agent/types.js";
-import { normalizeStopReason } from "../utils/normalize-stop-reason.js";
+} from "./types.js";
+import { normalizeStopReason } from "../shared/normalize-stop-reason.js";
 
 /**
  * Anthropic-specific prompt-cache TTL.

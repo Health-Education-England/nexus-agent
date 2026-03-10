@@ -9,7 +9,7 @@
  * — that file now re-exports from here.
  */
 
-import type { ToolDefinition, ModelProvider } from "../../src/agent/types.js";
+import type { ToolDefinition, ModelProvider } from "../../providers/types.js";
 import type { PipelineConfig } from "../core/types.js";
 import {
   askGoldGuide,

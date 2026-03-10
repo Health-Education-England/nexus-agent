@@ -2,7 +2,7 @@
   {
     "id": "dev-001",
     "question": "What is the maximum continuous period a doctor can be out of training before the Postgraduate Dean must review their training number?",
-    "expectedAnswer": "More than two years. Per paragraph 1.15 i, if a postgraduate doctor in training is unlikely to undertake any training for a continuous period of more than two years, the Postgraduate Dean should review maintenance of the training number/contract.",
+    "expectedAnswer": "Two years. Under paragraph 1.15 i, if a postgraduate doctor in training is unlikely to undertake any training for a continuous period of more than two years, the Postgraduate Dean should review maintenance of the training number/contract.",
     "requiredCitations": ["1.15 i"],
     "severity": "CRITICAL",
     "tags": ["single-hop", "procedural"],

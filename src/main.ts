@@ -3,8 +3,9 @@ import { createGetUserMessage } from "./input-handler.js";
 import { Agent } from "./agent/agent.js";
 import {
   createProviderFromEnv,
-  createAnthropicProvider
-} from "./providers/provider-factory.js";
+  createAnthropicProvider,
+  createOllamaProvider
+} from "../providers/provider-factory.js";
 import { MAX_TOKENS } from "./agent/constants.js";
 import {
   DateTimeTool,
@@ -22,8 +23,13 @@ try {
   // Create a dedicated provider for the Gold Guide sub-agent.
   // The sub-agent model is owned by its production-config, not the root .env.
   const subAgentModel = PRODUCTION_CONFIG.models.answer;
-  const subAgentProvider = createAnthropicProvider(subAgentModel, MAX_TOKENS);
-  console.log(`Gold Guide sub-agent model: ${subAgentModel}`);
+  const subAgentProvider =
+    PRODUCTION_CONFIG.provider === "ollama"
+      ? createOllamaProvider(subAgentModel, MAX_TOKENS)
+      : createAnthropicProvider(subAgentModel, MAX_TOKENS);
+  console.log(
+    `Gold Guide sub-agent model: ${subAgentModel} (${PRODUCTION_CONFIG.provider})`
+  );
 
   const tools = [
     DateTimeTool,

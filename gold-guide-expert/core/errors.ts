@@ -4,6 +4,11 @@
  * known failures.
  */
 
+export {
+  formatErrorCauseSuffix,
+  formatUnknownError
+} from "../../shared/error-format.js";
+
 export class RetrievalError extends Error {
   constructor(message: string) {
     super(message);

@@ -1,10 +1,16 @@
 import Anthropic from "@anthropic-ai/sdk";
-import type { ModelProvider } from "../agent/types.js";
+import type { ModelProvider } from "./types.js";
 import { AnthropicProvider } from "./anthropic.js";
 import type { PromptCacheTTL } from "./anthropic.js";
 import { BedrockProvider } from "./bedrock.js";
+import { OllamaProvider } from "./ollama.js";
 
-export type ProviderName = "anthropic" | "openai" | "gemini" | "bedrock";
+export type ProviderName =
+  | "anthropic"
+  | "openai"
+  | "gemini"
+  | "bedrock"
+  | "ollama";
 
 export type ProviderFactoryResult = {
   provider: ModelProvider;
@@ -42,14 +48,38 @@ function normalizeProviderName(value: string | undefined): ProviderName {
     provider === "anthropic" ||
     provider === "openai" ||
     provider === "gemini" ||
-    provider === "bedrock"
+    provider === "bedrock" ||
+    provider === "ollama"
   ) {
     return provider;
   }
 
   throw new Error(
-    `Unsupported AI_PROVIDER '${value}'. Supported values: anthropic, openai, gemini, bedrock`
+    `Unsupported AI_PROVIDER '${value}'. Supported values: anthropic, bedrock, ollama (openai, gemini planned)`
   );
+}
+
+/**
+ * Create an Ollama provider for a specific model.
+ * Used by the eval runner to create answer/judge providers when
+ * provider="ollama" is set in a pipeline config.
+ */
+export function createOllamaProvider(
+  model: string,
+  maxTokens: number,
+  options?: { baseUrl?: string; numCtx?: number }
+): ModelProvider {
+  return new OllamaProvider({
+    model,
+    maxTokens,
+    baseUrl: options?.baseUrl ?? process.env.OLLAMA_BASE_URL,
+    numCtx:
+      options?.numCtx ??
+      (process.env.OLLAMA_NUM_CTX
+        ? Number.parseInt(process.env.OLLAMA_NUM_CTX, 10)
+        : undefined),
+    temperature: 0
+  });
 }
 
 /**
@@ -105,9 +135,32 @@ export function createProviderFromEnv(
       return { provider, providerName, model };
     }
 
+    case "ollama": {
+      const model = process.env.OLLAMA_MODEL;
+      if (!model) {
+        throw new Error(
+          "OLLAMA_MODEL environment variable is required when AI_PROVIDER=ollama\n" +
+            "Example: qwen3.5:9b"
+        );
+      }
+      const baseUrl = process.env.OLLAMA_BASE_URL;
+      const numCtx = process.env.OLLAMA_NUM_CTX
+        ? Number.parseInt(process.env.OLLAMA_NUM_CTX, 10)
+        : undefined;
+
+      const provider = new OllamaProvider({
+        model,
+        maxTokens,
+        baseUrl,
+        numCtx,
+        temperature: 0
+      });
+      return { provider, providerName, model };
+    }
+
     case "openai":
       throw new Error(
-        "AI_PROVIDER=openai is not implemented yet. Add an OpenAI adapter under src/providers/"
+        "AI_PROVIDER=openai is not implemented yet. Add an OpenAI adapter under providers/"
       );
 
     case "gemini":

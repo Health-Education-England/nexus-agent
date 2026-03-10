@@ -31,39 +31,49 @@ NOTE: This architecture shows other tools in addition to the **ask_gold_guide** 
 
 The **Orchestrator** is the main LLM agent that receives user queries, decides which tools to call, and synthesises a final response. The **Gold Guide Expert** is a sub-agent that runs an entire retrieval pipeline (CAG or RAG) behind the scenes.
 
-## Project Structure (WIP)
+## Project Structure
 
 ```text
-src/
-├── agent/                  # Core orchestrator agent loop + types
+providers/                  # Model provider adapters (shared infrastructure)
+├── types.ts                # Provider-agnostic interfaces: ModelProvider, Message,
+│                           #   ToolDefinition, ContentBlock, ModelResponse, etc.
+├── anthropic.ts            # Anthropic direct API
+├── bedrock.ts              # AWS Bedrock Converse API
+├── ollama.ts               # Ollama local models (OpenAI-compatible)
+├── provider-factory.ts     # createProviderFromEnv() + named provider helpers
+└── index.ts
+
+shared/                     # Cross-cutting utilities (no app or domain concerns)
+├── error-format.ts         # formatUnknownError(), formatErrorCauseSuffix()
+└── normalize-stop-reason.ts
+
+src/                        # Orchestrator application
+├── agent/
 │   ├── agent.ts            # Agent class (interactive + programmatic chat)
-│   ├── constants.ts        # System prompts, config constants
-│   ├── types.ts            # Provider-agnostic message/tool interfaces
+│   ├── constants.ts        # System prompt, MAX_TOKENS, MAX_TOOL_TURNS
 │   └── index.ts
-├── providers/              # Model provider adapters
-│   ├── anthropic.ts        # Anthropic direct API
-│   ├── bedrock.ts          # AWS Bedrock Converse API
-│   └── provider-factory.ts
-├── tools/                  # Orchestrator tools
+├── tools/                  # Orchestrator tool definitions
 │   ├── datetime.tool.ts
 │   ├── ltft-calculator.tool.ts
 │   └── gold-guide-expert.tool.ts   # Re-exports from gold-guide-expert/sub-agent
 ├── utils/
-│   ├── colours.ts
-│   └── normalize-stop-reason.ts
+│   └── colours.ts          # ANSI colour codes for CLI output
 ├── main.ts                 # Interactive CLI entry point
 └── input-handler.ts        # Readline-based CLI input
 
 gold-guide-expert/          # Self-contained Gold Guide domain module
-├── core/                   # Shared library (stateless, no agent concerns)
+├── core/                   # Stateless retrieval library
 │   ├── types.ts            # PipelineConfig, GoldGuideResult, Citation, etc.
+│   ├── errors.ts           # Domain error types (RetrievalError, etc.)
 │   ├── query-gold-guide.ts # queryGoldGuide() — shared entry point
 │   ├── retrieval/          # Pluggable retrieval pipeline implementations
 │   │   ├── cag-pipeline.ts
 │   │   ├── rag-pipeline.ts
-│   │   └── hybrid-pipeline.ts
+│   │   ├── hybrid-pipeline.ts
+│   │   ├── embeddings/     # EmbeddingProvider implementations
+│   │   └── vector-store/   # VectorStore implementations (Qdrant)
 │   └── index.ts
-├── evaluation/             # Test harness (imports core/)
+├── evaluation/             # Batch evaluation harness (imports core/ + providers/)
 │   ├── types.ts            # QAItem, ScoredResult, EvalRunSummary, etc.
 │   ├── config.ts           # Dataset loader + eval pipeline ID aliases
 │   ├── pipeline-registry.ts # Single source of truth for all pipeline configs
@@ -71,15 +81,31 @@ gold-guide-expert/          # Self-contained Gold Guide domain module
 │   ├── judge.ts            # LLM-as-judge scoring
 │   ├── metrics.ts          # Aggregate metric computation
 │   └── index.ts
-├── sub-agent/              # Production wrapper (imports core/)
-│   ├── gold-guide-sub-agent.ts  # Conversation-aware wrapper + PRODUCTION_CONFIG
+├── sub-agent/              # Production wrapper (imports core/ + providers/)
+│   ├── gold-guide-sub-agent.ts  # Conversation-aware wrapper
+│   ├── production-config.ts     # PRODUCTION_CONFIG — points to evaluation winner
 │   ├── tool-definition.ts       # ToolDefinition for the Orchestrator
 │   └── index.ts
+├── scripts/                # One-off data preparation scripts
+│   ├── parse-pdf.py
+│   ├── clean-markdown.ts
+│   ├── canonicalise.ts
+│   ├── ingest-vectors.ts
+│   └── list-anthropic-models.ts
 ├── data/                   # Non-code assets
-│   ├── raw/                # Original Gold Guide PDF
+│   ├── raw/                # Original Gold Guide source
 │   ├── markdown/           # Parsed + canonicalised markdown
 │   └── qa/                 # QA datasets (development, frozen, stress)
 └── docs/                   # Research & planning documents
+```
+
+### Dependency layers
+
+```text
+shared/            ← (no internal deps)
+providers/         ← shared/
+gold-guide-expert/ ← providers/  shared/
+src/               ← providers/  shared/  gold-guide-expert/
 ```
 
 ### Key design: shared `queryGoldGuide()`
@@ -90,14 +116,12 @@ gold-guide-expert/sub-agent/            →  gold-guide-expert/core/queryGoldGui
 gold-guide-expert/evaluation/runner.ts  →  gold-guide-expert/core/queryGoldGuide()
 ```
 
-Both the production sub-agent and the evaluation harness will call the same stateless
+Both the production sub-agent and the evaluation harness call the same stateless
 `queryGoldGuide(question, config)` function. Pipeline configs are managed in a
-central registry (`core/pipeline-registry.ts`) — the production config is just a
+central registry (`evaluation/pipeline-registry.ts`) — the production config is just a
 pointer to the evaluation winner.
 
 ## Quick Start
-
-NOTE: This project is still very much a WIP e.g. no "Gold Guide expert", no evaluation harness infra etc.
 
 ```bash
 # Install dependencies
@@ -110,27 +134,69 @@ cp .env.example .env
 # Interactive mode (Orchestrator with all tools)
 npm run dev
 
-# Run evaluation harness (development dataset)
-npm run -s eval:dev
+# Run evaluation harness (CAG baseline)
+npm run -s eval:cag
 
 # Optional: single-item low-cost run for quick test
-npm run -s eval:dev -- --limit 1
+npm run -s eval:cag -- --limit 1
 ```
+
+### RAG pipeline setup
+
+The naive RAG pipeline requires local infrastructure (Ollama + Qdrant).
+See `gold-guide-expert/README.md` for full setup instructions.
+
+```bash
+# Quick version:
+ollama pull qwen3-embedding:8b  # download embedding model (~4.7GB)
+npm run rag:services:up          # start Qdrant (Docker)
+npm run rag:ingest               # embed + ingest chunks
+npm run -s eval:rag              # run RAG evaluation
+```
+
+### Using Ollama for the orchestrator / answer / judge models
+
+Any LLM role in the stack can run on a local Ollama chat model instead of a
+cloud provider, for zero-cost development and experimentation.
+
+```bash
+# 1. Pull a model
+ollama pull qwen3.5:9b    # 6.6GB, good balance of quality and speed
+
+# 2. Set environment variables
+AI_PROVIDER=ollama
+OLLAMA_MODEL=qwen3.5:9b
+# OLLAMA_NUM_CTX=16384      # increase for long documents (default: 8192)
+
+# 3. Run interactively
+npm run dev
+
+# 4. Or run evaluation with a local pipeline alias
+npm run -s eval:cag -- --pipeline cagLocal --limit 1
+```
+
+Smaller models (e.g. `qwen3.5:4b`) also work and are faster, but may
+produce lower-quality tool calling and citation pass-through. See
+`gold-guide-expert/README.md` for local evaluation pipeline aliases.
 
 For detailed Gold Guide evaluation commands, judge modes, model override options,
 and artifact locations, see `gold-guide-expert/README.md`.
 
-## Environment Variables (WIP)
+## Environment Variables
 
-| Variable            | Required     | Description              |
-| ------------------- | ------------ | ------------------------ |
-| `AI_PROVIDER`       | Yes          | `anthropic` or `bedrock` |
-| `ANTHROPIC_API_KEY` | If anthropic | API key                  |
-| `ANTHROPIC_MODEL`   | If anthropic | Model ID                 |
-| `BEDROCK_MODEL`     | If bedrock   | Bedrock model ID         |
-| `AWS_REGION`        | If bedrock   | AWS region               |
+| Variable            | Required     | Description                           |
+| ------------------- | ------------ | ------------------------------------- |
+| `AI_PROVIDER`       | Yes          | `anthropic`, `bedrock`, or `ollama`   |
+| `ANTHROPIC_API_KEY` | If anthropic | API key                               |
+| `ANTHROPIC_MODEL`   | If anthropic | Model ID                              |
+| `BEDROCK_MODEL`     | If bedrock   | Bedrock model ID                      |
+| `AWS_REGION`        | If bedrock   | AWS region                            |
+| `OLLAMA_MODEL`      | If ollama    | Ollama chat model (e.g. `qwen3.5:9b`) |
+| `OLLAMA_BASE_URL`   | No           | Ollama URL (default: localhost:11434) |
+| `OLLAMA_NUM_CTX`    | No           | Context window tokens (default: 8192) |
+| `QDRANT_URL`        | No           | Qdrant URL (default: localhost:6333)  |
 
-Note: Still WIP, e.g. no Bedrock implementation yet so just best guess; and we can/will add more model providers to test.
+Note: Bedrock provider is scaffolded but not yet fully implemented.
 
 ## Testing Plan Alignment
 

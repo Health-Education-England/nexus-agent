@@ -13,6 +13,11 @@
     "resolveJsonModule": true,
     "declaration": true
   },
-  "include": ["src/**/*", "gold-guide-expert/**/*.ts"],
+  "include": [
+    "src/**/*",
+    "gold-guide-expert/**/*.ts",
+    "shared/**/*.ts",
+    "providers/**/*.ts"
+  ],
   "exclude": ["node_modules", "dist"]
 }

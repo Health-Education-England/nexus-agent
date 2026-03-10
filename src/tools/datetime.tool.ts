@@ -1,4 +1,4 @@
-import type { ToolDefinition } from "../agent/types.js";
+import type { ToolDefinition } from "../../providers/types.js";
 import { DEFAULT_TIMEZONE } from "../agent/constants.js";
 
 export const DateTimeTool: ToolDefinition = {

@@ -128,17 +128,26 @@ export const EVAL_PIPELINE_IDS = {
   /** CAG cheap baseline */
   cagCheap: "cag-haiku-anthropic",
 
+  /** CAG local (Ollama) */
+  cagLocal: "cag-qwen35-ollama",
+
   /** Naive RAG — testing-phase step 6 */
   naiveRag: "naive-rag-sonnet-anthropic",
 
   /** Naive RAG cheap */
   naiveRagCheap: "naive-rag-haiku-anthropic",
 
+  /** Naive RAG local (Ollama) */
+  naiveRagLocal: "naive-rag-qwen35-ollama",
+
   /** Hybrid RAG — testing-phase step 7 */
   hybridRag: "hybrid-rag-sonnet-anthropic",
 
   /** Hybrid RAG cheap */
-  hybridRagCheap: "hybrid-rag-haiku-anthropic"
+  hybridRagCheap: "hybrid-rag-haiku-anthropic",
+
+  /** Hybrid RAG local (Ollama) */
+  hybridRagLocal: "hybrid-rag-qwen35-ollama"
 } as const satisfies Record<string, PipelineId>;
 
 /** Re-export the full registry and lookup helper for direct use */

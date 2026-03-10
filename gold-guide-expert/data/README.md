@@ -96,5 +96,5 @@ A `loadDataset()` utility was implemented in the evaluation module (`gold-guide-
 
 ```bash
 # Run the development evaluation set
-npm run eval:dev
+npm run eval:cag
 ```

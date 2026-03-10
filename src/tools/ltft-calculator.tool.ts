@@ -1,4 +1,4 @@
-import type { ToolDefinition } from "../agent/types.js";
+import type { ToolDefinition } from "../../providers/types.js";
 
 export const LtftCalculatorTool: ToolDefinition = {
   name: "ltft_calculator",

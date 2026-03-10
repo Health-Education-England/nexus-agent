@@ -3,7 +3,7 @@ import type { PipelineConfig } from "../core/types.js";
 /**
  * The ID of the pipeline currently running in production.
  */
-export const PRODUCTION_PIPELINE_ID = "cag-sonnet-anthropic";
+export const PRODUCTION_PIPELINE_ID = "cag-haiku-anthropic";
 
 /**
  * Hardcoded production configuration.

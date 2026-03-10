@@ -1,0 +1,20 @@
+# Qdrant vector database for the RAG pipeline.
+# Usage:
+#   docker compose up -d      # start
+#   docker compose down        # stop (data persists in volume)
+#   docker compose down -v     # stop + delete data
+
+services:
+  qdrant:
+    image: qdrant/qdrant:latest
+    ports:
+      - "${QDRANT_PORT:-6333}:6333"
+      - "6334:6334" # gRPC endpoint (if we want "blazing fast" in future)
+    volumes:
+      - qdrant_data:/qdrant/storage
+    environment:
+      - QDRANT__SERVICE__GRPC_PORT=6334
+    restart: unless-stopped
+
+volumes:
+  qdrant_data:

@@ -9,15 +9,15 @@
 export type PipelineConfig = {
   pipeline: "cag" | "naive-rag" | "hybrid-rag";
 
-  /** Provider for all models in this config (split per-model later if needed). */
-  provider: "anthropic" | "bedrock";
+  /** Provider for the answer/judge LLM. */
+  provider: "anthropic" | "bedrock" | "ollama";
 
   /**
    * Models used for each task in the pipeline.
    *
    * - `answer`    — synthesises the response from retrieved context (always required)
    * - `judge`     — LLM-as-judge during evaluation (defaults to `answer` if omitted)
-   * - `embedding` — embedding model for RAG retrieval (future)
+   * - `embedding` — embedding model for RAG retrieval (e.g. "qwen3-embedding:8b")
    * - `reranker`  — re-ranking model for hybrid RAG (future)
    */
   models: {
@@ -31,6 +31,78 @@ export type PipelineConfig = {
   topK?: number;
   chunkSize?: number;
   chunkOverlap?: number;
+
+  /**
+   * Output embedding dimensions for Matryoshka-capable models.
+   * Vectors are truncated from the model's native dimension and L2-normalised.
+   * Must match the dimension used during ingestion.
+   * Defaults to 1024 if omitted.
+   */
+  embeddingDimensions?: number;
+
+  /**
+   * Qdrant collection name for vector-based pipelines.
+   * Defaults to "gold-guide" if omitted.
+   */
+  vectorCollection?: string;
+};
+
+// ── Embedding Provider ──
+
+/**
+ * Provider-agnostic interface for text embedding.
+ * Implementations: OllamaEmbeddingProvider (local), future: Gemini, Voyage, etc.
+ */
+export type EmbeddingProvider = {
+  /** Embed one or more texts into dense vectors. */
+  embed(texts: string[]): Promise<number[][]>;
+
+  /** Dimensionality of the embedding vectors. */
+  readonly dimensions: number;
+
+  /** Model identifier (e.g. "nomic-embed-text"). */
+  readonly modelName: string;
+};
+
+// ── Vector Store ──
+
+export type VectorDocument = {
+  id: string | number;
+  vector: number[];
+  payload: Record<string, unknown>;
+};
+
+export type VectorSearchResult = {
+  id: string;
+  score: number;
+  payload: Record<string, unknown>;
+};
+
+/**
+ * Provider-agnostic interface for vector storage and retrieval.
+ * Implementations: QdrantVectorStore (Docker), future: LanceDB, Pgvector, etc.
+ */
+export type VectorStore = {
+  /**
+   * Ensure a collection exists with the given dimensions.
+   * No-op if it already exists with matching config.
+   */
+  ensureCollection(name: string, dimensions: number): Promise<void>;
+
+  /** Upsert documents into a collection. */
+  upsert(collection: string, documents: VectorDocument[]): Promise<void>;
+
+  /** Search for the top-k nearest neighbours. */
+  search(
+    collection: string,
+    vector: number[],
+    topK: number
+  ): Promise<VectorSearchResult[]>;
+
+  /** Check if a collection exists and has points. */
+  collectionInfo(
+    collection: string
+  ): Promise<{ exists: boolean; pointCount: number }>;
 };
 
 export type Citation = {

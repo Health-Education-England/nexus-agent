@@ -14,7 +14,7 @@
  */
 
 import type { PipelineConfig, GoldGuideResult } from "../core/types.js";
-import type { ModelProvider } from "../../src/agent/types.js";
+import type { ModelProvider } from "../../providers/types.js";
 import { queryGoldGuide } from "../core/index.js";
 import { PRODUCTION_CONFIG } from "./production-config.js";
 

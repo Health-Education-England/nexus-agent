@@ -12,4 +12,4 @@ export type {
   ProviderToolChoice,
   GenerateResponseOptions,
   ModelProvider
-} from "./types.js";
+} from "../../providers/types.js";

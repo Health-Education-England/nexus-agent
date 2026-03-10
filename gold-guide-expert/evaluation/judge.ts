@@ -8,7 +8,7 @@
  */
 
 import type { GoldGuideResult } from "../core/types.js";
-import type { ModelProvider } from "../../src/agent/types.js";
+import type { ModelProvider } from "../../providers/types.js";
 import type { QAItem, ScoredResult } from "./types.js";
 
 // ── Types ──

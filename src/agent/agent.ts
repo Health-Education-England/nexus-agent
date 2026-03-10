@@ -7,7 +7,7 @@ import type {
   ToolDefinition,
   ToolResultBlock,
   ToolUseBlock
-} from "./types.js";
+} from "../../providers/types.js";
 import { SYSTEM_PROMPT, MAX_TOOL_TURNS } from "./constants.js";
 import { COLOURS } from "../utils/colours.js";
 

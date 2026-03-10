@@ -14,15 +14,17 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import "dotenv/config";
 import Anthropic from "@anthropic-ai/sdk";
+import { formatErrorCauseSuffix, formatUnknownError } from "../core/errors.js";
 import type { PipelineConfig, GoldGuideResult } from "../core/types.js";
 import type { QAItem, EvalRunSummary } from "./types.js";
-import type { ModelProvider } from "../../src/agent/types.js";
-import type { PromptCacheTTL } from "../../src/providers/anthropic.js";
+import type { ModelProvider } from "../../providers/types.js";
+import type { PromptCacheTTL } from "../../providers/anthropic.js";
 import { queryGoldGuide } from "../core/index.js";
 import { judge } from "./judge.js";
 import { computeMetrics } from "./metrics.js";
-import { AnthropicProvider } from "../../src/providers/anthropic.js";
-import { BedrockProvider } from "../../src/providers/bedrock.js";
+import { AnthropicProvider } from "../../providers/anthropic.js";
+import { BedrockProvider } from "../../providers/bedrock.js";
+import { OllamaProvider } from "../../providers/ollama.js";
 import {
   DATASET_NAMES,
   EVAL_PIPELINE_IDS,
@@ -160,6 +162,23 @@ function createProvider(config: PipelineConfig, model: string): ModelProvider {
     return new BedrockProvider({ model, maxTokens: 2048, region });
   }
 
+  if (config.provider === "ollama") {
+    const baseUrl = process.env.OLLAMA_BASE_URL;
+    const numCtx = process.env.OLLAMA_NUM_CTX
+      ? Number.parseInt(process.env.OLLAMA_NUM_CTX, 10)
+      : undefined;
+    const maxTokens = process.env.OLLAMA_MAX_TOKENS
+      ? Number.parseInt(process.env.OLLAMA_MAX_TOKENS, 10)
+      : 4096;
+    return new OllamaProvider({
+      model,
+      maxTokens,
+      baseUrl,
+      numCtx,
+      temperature: 0
+    });
+  }
+
   throw new Error(`Unsupported provider '${config.provider}'.`);
 }
 
@@ -214,7 +233,14 @@ export async function runEvaluation(
       const scored = await judge(qaItem, result, { provider: judgeProvider });
       scoredResults.push(scored);
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
+      const message = formatUnknownError(error);
+      const cause = formatErrorCauseSuffix(error);
+      console.error(`\n[eval] ERROR on ${qaItem.id}: ${message}${cause}`);
+      if (error instanceof Error && error.stack) {
+        console.error(
+          `[eval] Stack: ${error.stack.split("\n").slice(0, 5).join("\n")}`
+        );
+      }
       const fallbackResult = createErrorResult(message, config);
       scoredResults.push({
         qaItem,
@@ -225,7 +251,7 @@ export async function runEvaluation(
           completeness: 0,
           hallucinationSeverity: 0
         },
-        judgeMeta: { error: `query-error: ${message}` }
+        judgeMeta: { error: `query-error: ${message}${cause}` }
       });
     }
   }
@@ -344,7 +370,7 @@ if (isDirectRun) {
   try {
     await main(process.argv.slice(2));
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = formatUnknownError(error);
     console.error(`[eval] ${message}`);
     process.exitCode = 1;
   }

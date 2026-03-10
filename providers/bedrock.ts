@@ -18,8 +18,8 @@ import type {
   ModelResponse,
   ProviderToolChoice,
   ToolDefinition
-} from "../agent/types.js";
-import { normalizeStopReason } from "../utils/normalize-stop-reason.js";
+} from "./types.js";
+import { normalizeStopReason } from "../shared/normalize-stop-reason.js";
 
 export type BedrockToolChoice = ProviderToolChoice;
 

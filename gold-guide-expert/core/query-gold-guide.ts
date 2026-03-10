@@ -18,7 +18,7 @@ import type {
   Citation,
   RetrievedChunk
 } from "./types.js";
-import type { Message, ModelProvider } from "../../src/agent/types.js";
+import type { Message, ModelProvider } from "../../providers/types.js";
 import { PIPELINE_FACTORIES } from "./retrieval/index.js";
 
 function normalizeRef(value: string): string {

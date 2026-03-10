@@ -26,8 +26,8 @@ export const PIPELINE_REGISTRY = {
     pipeline: "cag",
     provider: "anthropic",
     models: {
-      answer: "claude-3-5-haiku-latest",
-      judge: "claude-sonnet-4-20250514"
+      answer: "claude-haiku-4-5-20251001",
+      judge: "claude-haiku-4-5-20251001"
     }
   },
 
@@ -44,23 +44,25 @@ export const PIPELINE_REGISTRY = {
     provider: "anthropic",
     models: {
       answer: "claude-sonnet-4-20250514",
-      judge: "claude-sonnet-4-20250514"
+      judge: "claude-sonnet-4-20250514",
+      embedding: "qwen3-embedding:8b"
     },
     topK: 5,
-    chunkSize: 2000,
-    chunkOverlap: 200
+    embeddingDimensions: 1024,
+    vectorCollection: "gold-guide"
   },
 
   "naive-rag-haiku-anthropic": {
     pipeline: "naive-rag",
     provider: "anthropic",
     models: {
-      answer: "claude-3-5-haiku-latest",
-      judge: "claude-sonnet-4-20250514"
+      answer: "claude-haiku-4-5-20251001",
+      judge: "claude-haiku-4-5-20251001",
+      embedding: "qwen3-embedding:8b"
     },
     topK: 5,
-    chunkSize: 2000,
-    chunkOverlap: 200
+    embeddingDimensions: 1024,
+    vectorCollection: "gold-guide"
   },
 
   // ── Hybrid RAG configs (testing-phase step 7) ──
@@ -70,23 +72,66 @@ export const PIPELINE_REGISTRY = {
     provider: "anthropic",
     models: {
       answer: "claude-sonnet-4-20250514",
-      judge: "claude-sonnet-4-20250514"
+      judge: "claude-sonnet-4-20250514",
+      embedding: "qwen3-embedding:8b"
     },
     topK: 5,
-    chunkSize: 2000,
-    chunkOverlap: 200
+    embeddingDimensions: 1024,
+    vectorCollection: "gold-guide"
   },
 
   "hybrid-rag-haiku-anthropic": {
     pipeline: "hybrid-rag",
     provider: "anthropic",
     models: {
-      answer: "claude-3-5-haiku-latest",
-      judge: "claude-sonnet-4-20250514"
+      answer: "claude-haiku-4-5-20251001",
+      judge: "claude-haiku-4-5-20251001",
+      embedding: "qwen3-embedding:8b"
     },
     topK: 5,
-    chunkSize: 2000,
-    chunkOverlap: 200
+    embeddingDimensions: 1024,
+    vectorCollection: "gold-guide"
+  },
+
+  // ── Ollama (local) configs ──
+  //
+  // These use a local Ollama chat model for answer synthesis (and
+  // optionally judging). Useful for zero-cost experimentation.
+  // Prerequisites: ollama pull <model>
+
+  "cag-qwen35-ollama": {
+    pipeline: "cag",
+    provider: "ollama",
+    models: {
+      answer: "qwen3.5:9b",
+      judge: "qwen3.5:9b"
+    }
+  },
+
+  "naive-rag-qwen35-ollama": {
+    pipeline: "naive-rag",
+    provider: "ollama",
+    models: {
+      answer: "qwen3.5:9b",
+      judge: "qwen3.5:9b",
+      embedding: "qwen3-embedding:8b"
+    },
+    topK: 5,
+    embeddingDimensions: 1024,
+    vectorCollection: "gold-guide"
+  },
+
+  "hybrid-rag-qwen35-ollama": {
+    pipeline: "hybrid-rag",
+    provider: "ollama",
+    models: {
+      answer: "qwen3.5:9b",
+      judge: "qwen3.5:9b",
+      embedding: "qwen3-embedding:8b"
+    },
+    topK: 5,
+    embeddingDimensions: 1024,
+    vectorCollection: "gold-guide"
   }
 } as const satisfies Record<string, PipelineConfig>;
 
