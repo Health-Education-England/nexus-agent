@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Nexus Agent</title>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <link rel="stylesheet" href="/styles/main.css" />
+</head>
+<body>
+
+<div id="overlay"></div>
+
+<dialog id="delete-modal" aria-labelledby="delete-modal-title">
+  <div class="modal-card">
+    <h2 id="delete-modal-title" class="modal-title">Delete conversation?</h2>
+    <p id="delete-modal-text" class="modal-body">This will permanently remove the selected conversation history.</p>
+    <div class="modal-actions">
+      <button id="delete-cancel-btn" class="modal-btn" type="button">Cancel</button>
+      <button id="delete-confirm-btn" class="modal-btn modal-btn-danger" type="button">Delete</button>
+    </div>
+  </div>
+</dialog>
+
+<div id="toast" aria-live="polite" aria-atomic="true">
+  <div id="toast-text" class="toast-text"></div>
+  <div class="toast-actions">
+    <button id="toast-undo-btn" class="toast-btn" type="button">Undo</button>
+    <button id="toast-close-btn" class="toast-close" type="button" aria-label="Dismiss notification">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    </button>
+  </div>
+</div>
+
+<aside id="sidebar" aria-label="Conversation history">
+  <div class="sb-top">
+    <div class="sb-logo">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#4a9ede" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/>
+      </svg>
+      <span>Conversations</span>
+    </div>
+    <button id="new-chat-btn" aria-label="Start new conversation">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      New conversation
+    </button>
+  </div>
+  <div class="sb-section-label">Recent</div>
+  <ul id="conv-list" aria-label="Past conversations"></ul>
+</aside>
+
+<div id="main">
+  <header>
+    <button id="menu-btn" aria-label="Toggle sidebar">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>
+      </svg>
+    </button>
+    <h1>Nexus Agent</h1>
+    <span id="save-indicator">&#10003; Saved</span>
+  </header>
+
+  <main id="chat" aria-live="polite" aria-label="Conversation">
+    <div class="message assistant">
+      <div class="bubble">
+        Hello! I’m Nexus. I can answer questions about the <strong>Gold Guide 10th Edition</strong> and help with LTFT CCT calculations. How can I help?
+      </div>
+    </div>
+  </main>
+
+  <footer>
+    <form id="form" autocomplete="off">
+      <textarea
+        id="input"
+        rows="1"
+        placeholder="Ask a question…"
+        aria-label="Your message"
+        required
+      ></textarea>
+      <button id="send" type="submit">Send</button>
+    </form>
+    <p class="hint">Press Enter to send · Shift+Enter for new line</p>
+  </footer>
+</div>
+
+<script type="module" src="/scripts/app.js"></script>
+</body>
+</html>

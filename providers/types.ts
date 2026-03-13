@@ -75,6 +75,8 @@ export type ProviderToolChoice = "auto" | "any" | { tool: string };
 export type GenerateResponseOptions = {
   toolChoice?: ProviderToolChoice;
   promptCaching?: boolean;
+  /** Called with each streamed text token as it arrives, when the provider supports it. */
+  onTextDelta?: (delta: string) => void;
 };
 
 export type ModelProvider = {

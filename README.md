@@ -52,6 +52,11 @@ src/                        # Orchestrator application
 │   ├── agent.ts            # Agent class (interactive + programmatic chat)
 │   ├── constants.ts        # System prompt, MAX_TOKENS, MAX_TOOL_TURNS
 │   └── index.ts
+├── public/                 # Web UI static assets (served by src/server.ts)
+│   ├── index.html
+│   ├── scripts/app.js
+│   ├── styles/main.css
+│   └── README.md
 ├── tools/                  # Orchestrator tool definitions
 │   ├── datetime.tool.ts
 │   ├── ltft-calculator.tool.ts
@@ -59,7 +64,8 @@ src/                        # Orchestrator application
 ├── utils/
 │   └── colours.ts          # ANSI colour codes for CLI output
 ├── main.ts                 # Interactive CLI entry point
-└── input-handler.ts        # Readline-based CLI input
+├── input-handler.ts        # Readline-based CLI input
+└── server.ts               # Express web server + SSE chat + conversation CRUD
 
 gold-guide-expert/          # Self-contained Gold Guide domain module
 ├── core/                   # Stateless retrieval library
@@ -134,12 +140,27 @@ cp .env.example .env
 # Interactive mode (Orchestrator with all tools)
 npm run dev
 
+# Web mode (Express server + browser chat UI)
+npm run dev:web
+
 # Run evaluation harness (CAG baseline)
 npm run -s eval:cag
 
 # Optional: single-item low-cost run for quick test
 npm run -s eval:cag -- --limit 1
 ```
+
+Open `http://localhost:3000` when running `npm run dev:web`.
+
+### Web UI features (quick-and-dirty)
+
+- Streams assistant responses to the browser over SSE (`POST /chat`).
+- Auto-saves each conversation turn to `conversations/conversation-<id>.json`.
+- Lists existing conversations in the sidebar (`GET /conversations`).
+- Loads a prior conversation (`GET /conversations/:id`).
+- Deletes a conversation with confirmation + short undo window in the UI (server delete endpoint: `DELETE /conversations/:id`).
+
+Note: the web UI is intentionally lightweight and currently aimed at local development use.
 
 ### RAG pipeline setup
 

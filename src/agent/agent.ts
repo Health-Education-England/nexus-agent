@@ -11,6 +11,17 @@ import type {
 import { SYSTEM_PROMPT, MAX_TOOL_TURNS } from "./constants.js";
 import { COLOURS } from "../utils/colours.js";
 
+export type AgentEvent =
+  | { type: "text"; text: string }
+  | { type: "tool_use"; name: string }
+  | { type: "tool_result"; name: string; success: boolean }
+  | { type: "error"; message: string };
+
+type InferenceOpts = {
+  silent?: boolean;
+  emit?: (event: AgentEvent) => void;
+};
+
 export class Agent {
   private readonly provider: ModelProvider;
   private readonly getUserMessage: () => Promise<string | null>;
@@ -101,6 +112,25 @@ export class Agent {
   }
 
   /**
+   * Streaming single-turn for the web UI: runs inference and emits
+   * AgentEvents (text, tool_use, tool_result) via the provided callback.
+   * Returns the updated conversation history.
+   */
+  async stream(
+    conversation: Message[],
+    userMessage: string,
+    emit: (event: AgentEvent) => void
+  ): Promise<Message[]> {
+    const updated = [
+      ...conversation,
+      { role: "user" as const, content: userMessage }
+    ];
+    const content = await this.runInference(updated, { emit });
+    updated.push({ role: "assistant" as const, content });
+    return updated;
+  }
+
+  /**
    * Programmatic single-turn: send one user message and get the final
    * assistant content blocks back. No interactive I/O.
    * Used by the evaluation runner and by sub-agents.
@@ -145,7 +175,7 @@ export class Agent {
 
   private async runInference(
     conversation: Message[],
-    opts: { silent?: boolean } = {}
+    opts: InferenceOpts = {}
   ): Promise<ContentBlock[]> {
     let continueLoop = true;
     let currentContent: ContentBlock[] = [];
@@ -155,7 +185,10 @@ export class Agent {
       const response = await this.provider.generateResponse(
         conversation,
         this.tools,
-        this.systemPrompt
+        this.systemPrompt,
+        opts.emit
+          ? { onTextDelta: delta => opts.emit!({ type: "text", text: delta }) }
+          : undefined
       );
       currentContent = response.content;
 
@@ -166,7 +199,12 @@ export class Agent {
       if (toolUseBlocks.length > 0 && response.stop_reason === "tool_use") {
         toolTurns++;
         if (toolTurns > MAX_TOOL_TURNS) {
-          if (!opts.silent) {
+          if (opts.emit) {
+            opts.emit({
+              type: "error",
+              message: `Stopped: exceeded ${MAX_TOOL_TURNS} tool turns`
+            });
+          } else if (!opts.silent) {
             console.log(
               `\n${COLOURS.red}[Stopping: exceeded ${MAX_TOOL_TURNS} tool turns]${COLOURS.reset}`
             );
@@ -180,7 +218,9 @@ export class Agent {
           { role: "user", content: toolResults }
         );
       } else {
-        if (!opts.silent) {
+        // When opts.emit is set, text tokens were already streamed via
+        // onTextDelta. Only write to stdout for the plain CLI path.
+        if (!opts.emit && !opts.silent) {
           for (const block of currentContent) {
             if (block.type === "text") {
               process.stdout.write(block.text);
@@ -196,11 +236,13 @@ export class Agent {
 
   private async executeTools(
     toolUseBlocks: ToolUseBlock[],
-    opts: { silent?: boolean } = {}
+    opts: InferenceOpts = {}
   ): Promise<ToolResultBlock[]> {
     const results = await Promise.all(
       toolUseBlocks.map(async (toolUse): Promise<ToolResultBlock> => {
-        if (!opts.silent) {
+        if (opts.emit) {
+          opts.emit({ type: "tool_use", name: toolUse.name });
+        } else if (!opts.silent) {
           console.log(
             `\n${COLOURS.cyan}[Tool Use: ${toolUse.name}]${COLOURS.reset}`
           );
@@ -217,7 +259,13 @@ export class Agent {
         const toolDef = this.tools.find(t => t.name === toolUse.name);
 
         if (!toolDef) {
-          if (!opts.silent) {
+          if (opts.emit) {
+            opts.emit({
+              type: "tool_result",
+              name: toolUse.name,
+              success: false
+            });
+          } else if (!opts.silent) {
             console.log(
               `${COLOURS.red}[Error: Tool ${toolUse.name} not found]${COLOURS.reset}`
             );
@@ -242,7 +290,13 @@ export class Agent {
           });
           const result = await Promise.race([executionPromise, timeoutPromise]);
 
-          if (!opts.silent) {
+          if (opts.emit) {
+            opts.emit({
+              type: "tool_result",
+              name: toolUse.name,
+              success: true
+            });
+          } else if (!opts.silent) {
             const logResult =
               result.length > 100
                 ? result.slice(0, 100) + "... (truncated)"
@@ -260,7 +314,13 @@ export class Agent {
         } catch (error) {
           const errorMessage =
             error instanceof Error ? error.message : String(error);
-          if (!opts.silent) {
+          if (opts.emit) {
+            opts.emit({
+              type: "tool_result",
+              name: toolUse.name,
+              success: false
+            });
+          } else if (!opts.silent) {
             console.log(
               `${COLOURS.red}[Error: ${errorMessage}]${COLOURS.reset}`
             );
@@ -275,7 +335,7 @@ export class Agent {
       })
     );
 
-    if (!opts.silent) console.log("");
+    if (!opts.emit && !opts.silent) console.log("");
     return results;
   }
 

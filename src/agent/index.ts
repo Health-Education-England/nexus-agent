@@ -1,4 +1,5 @@
 export { Agent } from "./agent.js";
+export type { AgentEvent } from "./agent.js";
 export { SYSTEM_PROMPT, MAX_TOKENS, MAX_TOOL_TURNS } from "./constants.js";
 export type {
   Message,

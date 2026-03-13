@@ -67,6 +67,27 @@ export class AnthropicProvider implements ModelProvider {
       ...(promptCachingEnabled ? { cache_control: cacheControl } : {})
     };
 
+    const onTextDelta = options?.onTextDelta;
+
+    if (onTextDelta) {
+      // Streaming path — streams tokens to the caller as they arrive.
+      // Works with or without prompt caching (cache_control is embedded in
+      // content blocks by applyAnthropicCacheControl above).
+      const stream = this.client.messages.stream(
+        body as Anthropic.MessageCreateParamsNonStreaming
+      );
+      stream.on("text", (text: string) => onTextDelta(text));
+      const finalMsg = await stream.finalMessage();
+      const usage = this.mapUsage(
+        finalMsg.usage as unknown as Record<string, unknown>
+      );
+      return {
+        content: finalMsg.content as ContentBlock[],
+        stop_reason: normalizeStopReason(finalMsg.stop_reason),
+        usage
+      };
+    }
+
     const response = promptCachingEnabled
       ? await this.client.beta.promptCaching.messages.create(
           body as Anthropic.Beta.PromptCaching.MessageCreateParamsNonStreaming

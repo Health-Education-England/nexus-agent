@@ -1,6 +1,6 @@
 // ── WIP Agent-wide constants  ──
 
-export const MAX_TOKENS = 4096;
+export const MAX_TOKENS = 8192; // upped this just in case reponse gets truncated with tool use e.g. citations etc.
 export const MAX_TOOL_TURNS = 10;
 
 // ── WIP Orchestrator system prompt ──
