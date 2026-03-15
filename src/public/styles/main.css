@@ -81,6 +81,18 @@
   --finalising-bg: #d9e3f6;
   --finalising-border: #4f6ea8;
   --finalising-dot: #1a2f66;
+
+  --widget-card-bg: #ffffff;
+  --widget-card-border: #d7e2f0;
+  --widget-card-shadow: 0 4px 20px rgba(9, 20, 40, 0.14);
+  --widget-label-text: #374769;
+  --widget-label-optional: #8a9ab8;
+  --widget-input-bg: #f8fafd;
+  --widget-input-border: #b8cde0;
+  --widget-input-text: #17213a;
+  --widget-submitted-bg: #eaf4ec;
+  --widget-submitted-text: #1a6831;
+  --widget-submitted-border: #a3d4a8;
 }
 
 html,
@@ -502,6 +514,24 @@ header h1 {
   border-bottom-right-radius: 4px;
 }
 
+.message.user .bubble.ltft-user-submission {
+  padding: 10px 12px;
+}
+
+.ltft-user-submission-title {
+  font-size: 0.78rem;
+  font-weight: 600;
+  opacity: 0.95;
+  margin-bottom: 3px;
+}
+
+.ltft-user-submission-details {
+  font-size: 0.8rem;
+  line-height: 1.4;
+  opacity: 0.95;
+  word-break: break-word;
+}
+
 .message.assistant .bubble {
   background: var(--chat-assistant-bubble-bg);
   border: 1px solid var(--color-border-primary);
@@ -552,6 +582,48 @@ header h1 {
 }
 .bubble strong {
   font-weight: 600;
+}
+
+.bubble table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  table-layout: fixed;
+  margin: 0.5em 0 0.6em;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.bubble thead th {
+  text-align: left;
+  font-weight: 600;
+  background: rgba(255, 255, 255, 0.06);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.25);
+  padding: 6px 10px;
+}
+
+.bubble tbody td {
+  text-align: left;
+  vertical-align: top;
+  padding: 5px 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+  word-break: break-word;
+}
+
+.bubble tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.bubble th:first-child,
+.bubble td:first-child {
+  width: 42%;
+}
+
+.bubble th:nth-child(2),
+.bubble td:nth-child(2) {
+  width: 58%;
 }
 
 .tool-badge {
@@ -763,5 +835,166 @@ footer {
   #toast {
     top: auto;
     bottom: 16px;
+  }
+}
+
+/* ── Widget card ────────────────────────────────────────────────────────────────────────── */
+/*
+ * Inline interactive form card rendered by the agent.
+ *
+ * MCP APPS migration note
+ * -----------------------
+ * In the MCP Apps protocol this card's HTML would be served as an MCP resource
+ * at a ui:// URI and rendered by the host inside a sandboxed <iframe>.
+ * Communication back to the model uses the @modelcontextprotocol/ext-apps SDK
+ * (app.updateModelContext) rather than the /widget-submit endpoint.
+ * See: https://modelcontextprotocol.io/docs/extensions/apps
+ */
+
+.widget-card {
+  width: min(460px, 100%);
+  max-height: min(78vh, 680px);
+  background: var(--widget-card-bg);
+  border: 1px solid var(--widget-card-border);
+  border-radius: 14px;
+  box-shadow: var(--widget-card-shadow);
+  overflow-y: auto;
+  align-self: flex-start;
+  flex-shrink: 0;
+  margin-top: 4px;
+}
+
+.widget-header {
+  background: var(--color-surface-primary);
+  border-bottom: 1px solid var(--color-border-primary);
+  padding: 14px 16px;
+}
+
+.widget-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.93rem;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+.widget-subtitle {
+  margin-top: 5px;
+  font-size: 0.8rem;
+  color: rgba(255, 255, 255, 0.65);
+  line-height: 1.4;
+}
+
+.widget-form {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow-y: auto;
+}
+
+.widget-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.widget-field label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--widget-label-text);
+}
+
+.widget-optional {
+  font-weight: 400;
+  color: var(--widget-label-optional);
+}
+
+.widget-field input,
+.widget-field select {
+  border: 1px solid var(--widget-input-border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 0.88rem;
+  font-family: var(--font-sans);
+  background: var(--widget-input-bg);
+  color: var(--widget-input-text);
+  outline: none;
+  transition: border-color 0.15s;
+  width: 100%;
+}
+
+.widget-field input:focus,
+.widget-field select:focus {
+  border-color: var(--color-accent);
+}
+
+/* Tighten the native date picker appearance */
+.widget-field input[type="date"] {
+  cursor: pointer;
+}
+
+.widget-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.widget-submit-btn {
+  align-self: flex-end;
+  background: var(--color-accent);
+  color: #ffffff;
+  border: none;
+  border-radius: 8px;
+  padding: 9px 16px;
+  font-size: 0.88rem;
+  font-weight: 500;
+  font-family: var(--font-sans);
+  cursor: pointer;
+  margin-top: 2px;
+  transition: opacity 0.15s;
+}
+
+.widget-submit-btn:not(:disabled):hover {
+  opacity: 0.88;
+}
+
+.widget-submit-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.widget-error {
+  font-size: 0.8rem;
+  color: var(--tool-badge-error-text);
+  background: var(--tool-badge-error-bg);
+  border: 1px solid var(--tool-badge-error-border);
+  border-radius: 6px;
+  padding: 7px 10px;
+  margin-top: -2px;
+}
+
+.widget-submitted {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 14px 16px;
+  font-size: 0.88rem;
+  color: var(--widget-submitted-text);
+  background: var(--widget-submitted-bg);
+}
+
+.widget-submitted svg {
+  flex-shrink: 0;
+  color: var(--widget-submitted-text);
+}
+
+@media (max-width: 480px) {
+  .widget-row {
+    grid-template-columns: 1fr;
+  }
+  .widget-submit-btn {
+    align-self: stretch;
   }
 }

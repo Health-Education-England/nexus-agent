@@ -57,6 +57,19 @@ export type ModelResponse = {
   providerMetrics?: ModelProviderMetrics;
 };
 
+/** Events emitted by the agent over the SSE stream to the web UI. */
+export type AgentEvent =
+  | { type: "text"; text: string }
+  | { type: "tool_use"; name: string }
+  | { type: "tool_result"; name: string; success: boolean }
+  | { type: "widget"; widgetType: "ltft_form"; widgetId: string }
+  | { type: "error"; message: string };
+
+/** Optional context passed to a tool's execute() function. */
+export type ToolExecuteContext = {
+  emit?: (event: AgentEvent) => void;
+};
+
 export type ToolInputSchema = {
   type: "object";
   properties: Record<string, unknown>;
@@ -67,7 +80,21 @@ export type ToolDefinition = {
   name: string;
   description: string;
   input_schema: ToolInputSchema;
-  execute: (input: Record<string, unknown>) => Promise<string> | string;
+  /**
+   * When true, the agent stops the current inference loop immediately after
+   * this tool executes successfully, instead of making a follow-up model call.
+   * Useful for UI-rendering tools where additional assistant text is redundant.
+   */
+  stopAfterExecute?: boolean;
+  /**
+   * Maximum milliseconds the agent framework will wait for execute() to settle.
+   * Defaults to 30 000 ms (30 s) when not set.
+   */
+  timeoutMs?: number;
+  execute: (
+    input: Record<string, unknown>,
+    ctx?: ToolExecuteContext
+  ) => Promise<string> | string;
 };
 
 export type ProviderToolChoice = "auto" | "any" | { tool: string };

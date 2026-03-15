@@ -1,6 +1,7 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import type {
+  AgentEvent,
   ContentBlock,
   Message,
   ModelProvider,
@@ -11,15 +12,18 @@ import type {
 import { SYSTEM_PROMPT, MAX_TOOL_TURNS } from "./constants.js";
 import { COLOURS } from "../utils/colours.js";
 
-export type AgentEvent =
-  | { type: "text"; text: string }
-  | { type: "tool_use"; name: string }
-  | { type: "tool_result"; name: string; success: boolean }
-  | { type: "error"; message: string };
+// Re-export so server.ts and other consumers can import AgentEvent from here
+// without breaking existing import paths.
+export type { AgentEvent } from "../../providers/types.js";
 
 type InferenceOpts = {
   silent?: boolean;
   emit?: (event: AgentEvent) => void;
+};
+
+type InferenceResult = {
+  content: ContentBlock[];
+  endedAfterToolExecution: boolean;
 };
 
 export class Agent {
@@ -96,10 +100,11 @@ export class Agent {
         }
 
         process.stdout.write(`${COLOURS.yellow}Agent${COLOURS.reset}: `);
-        const assistantMessage = await this.runInference(conversation);
+        const inference = await this.runInference(conversation);
         console.log("");
-
-        conversation.push({ role: "assistant", content: assistantMessage });
+        if (!inference.endedAfterToolExecution) {
+          conversation.push({ role: "assistant", content: inference.content });
+        }
       }
 
       console.log("\nShutdown initiated...");
@@ -125,8 +130,10 @@ export class Agent {
       ...conversation,
       { role: "user" as const, content: userMessage }
     ];
-    const content = await this.runInference(updated, { emit });
-    updated.push({ role: "assistant" as const, content });
+    const inference = await this.runInference(updated, { emit });
+    if (!inference.endedAfterToolExecution) {
+      updated.push({ role: "assistant" as const, content: inference.content });
+    }
     return updated;
   }
 
@@ -144,10 +151,12 @@ export class Agent {
       { role: "user" as const, content: userMessage }
     ];
 
-    const content = await this.runInference(updated, { silent: true });
-    updated.push({ role: "assistant" as const, content });
+    const inference = await this.runInference(updated, { silent: true });
+    if (!inference.endedAfterToolExecution) {
+      updated.push({ role: "assistant" as const, content: inference.content });
+    }
 
-    return { content, conversation: updated };
+    return { content: inference.content, conversation: updated };
   }
 
   // ── Private ────────────────────────────────────────────────
@@ -176,10 +185,11 @@ export class Agent {
   private async runInference(
     conversation: Message[],
     opts: InferenceOpts = {}
-  ): Promise<ContentBlock[]> {
+  ): Promise<InferenceResult> {
     let continueLoop = true;
     let currentContent: ContentBlock[] = [];
     let toolTurns = 0;
+    let endedAfterToolExecution = false;
 
     while (continueLoop) {
       const response = await this.provider.generateResponse(
@@ -212,11 +222,17 @@ export class Agent {
           break;
         }
 
-        const toolResults = await this.executeTools(toolUseBlocks, opts);
+        const { results: toolResults, shouldStopAfterExecute } =
+          await this.executeTools(toolUseBlocks, opts);
         conversation.push(
           { role: "assistant", content: currentContent },
           { role: "user", content: toolResults }
         );
+
+        if (shouldStopAfterExecute) {
+          endedAfterToolExecution = true;
+          continueLoop = false;
+        }
       } else {
         // When opts.emit is set, text tokens were already streamed via
         // onTextDelta. Only write to stdout for the plain CLI path.
@@ -231,112 +247,141 @@ export class Agent {
       }
     }
 
-    return currentContent;
+    return { content: currentContent, endedAfterToolExecution };
   }
 
   private async executeTools(
     toolUseBlocks: ToolUseBlock[],
     opts: InferenceOpts = {}
-  ): Promise<ToolResultBlock[]> {
-    const results = await Promise.all(
-      toolUseBlocks.map(async (toolUse): Promise<ToolResultBlock> => {
-        if (opts.emit) {
-          opts.emit({ type: "tool_use", name: toolUse.name });
-        } else if (!opts.silent) {
-          console.log(
-            `\n${COLOURS.cyan}[Tool Use: ${toolUse.name}]${COLOURS.reset}`
-          );
-          if (
-            toolUse.input &&
-            typeof toolUse.input === "object" &&
-            !Array.isArray(toolUse.input) &&
-            Object.keys(toolUse.input).length > 0
-          ) {
-            console.log(`Input: ${JSON.stringify(toolUse.input, null, 2)}`);
-          }
-        }
-
-        const toolDef = this.tools.find(t => t.name === toolUse.name);
-
-        if (!toolDef) {
+  ): Promise<{ results: ToolResultBlock[]; shouldStopAfterExecute: boolean }> {
+    const executions = await Promise.all(
+      toolUseBlocks.map(
+        async (
+          toolUse
+        ): Promise<{ result: ToolResultBlock; stopAfterExecute: boolean }> => {
           if (opts.emit) {
-            opts.emit({
-              type: "tool_result",
-              name: toolUse.name,
-              success: false
-            });
+            opts.emit({ type: "tool_use", name: toolUse.name });
           } else if (!opts.silent) {
             console.log(
-              `${COLOURS.red}[Error: Tool ${toolUse.name} not found]${COLOURS.reset}`
+              `\n${COLOURS.cyan}[Tool Use: ${toolUse.name}]${COLOURS.reset}`
             );
+            if (
+              toolUse.input &&
+              typeof toolUse.input === "object" &&
+              !Array.isArray(toolUse.input) &&
+              Object.keys(toolUse.input).length > 0
+            ) {
+              console.log(`Input: ${JSON.stringify(toolUse.input, null, 2)}`);
+            }
           }
-          return {
-            type: "tool_result",
-            tool_use_id: toolUse.id,
-            content: `Error: Tool ${toolUse.name} not found`,
-            is_error: true
-          };
-        }
 
-        try {
-          this.validateInput(toolUse.input, toolDef.input_schema);
+          const toolDef = this.tools.find(t => t.name === toolUse.name);
 
-          const executionPromise = toolDef.execute(toolUse.input);
-          const timeoutPromise = new Promise<string>((_, reject) => {
-            setTimeout(
-              () => reject(new Error("Tool execution timed out after 30s")),
-              30000
-            );
-          });
-          const result = await Promise.race([executionPromise, timeoutPromise]);
+          if (!toolDef) {
+            if (opts.emit) {
+              opts.emit({
+                type: "tool_result",
+                name: toolUse.name,
+                success: false
+              });
+            } else if (!opts.silent) {
+              console.log(
+                `${COLOURS.red}[Error: Tool ${toolUse.name} not found]${COLOURS.reset}`
+              );
+            }
+            return {
+              result: {
+                type: "tool_result",
+                tool_use_id: toolUse.id,
+                content: `Error: Tool ${toolUse.name} not found`,
+                is_error: true
+              },
+              stopAfterExecute: false
+            };
+          }
 
-          if (opts.emit) {
-            opts.emit({
-              type: "tool_result",
-              name: toolUse.name,
-              success: true
+          try {
+            this.validateInput(toolUse.input, toolDef.input_schema);
+
+            const executionPromise = toolDef.execute(toolUse.input, {
+              emit: opts.emit
             });
-          } else if (!opts.silent) {
-            const logResult =
-              result.length > 100
-                ? result.slice(0, 100) + "... (truncated)"
-                : result;
-            console.log(
-              `${COLOURS.green}[Tool use result: ${logResult}]${COLOURS.reset}`
-            );
-          }
-
-          return {
-            type: "tool_result",
-            tool_use_id: toolUse.id,
-            content: result
-          };
-        } catch (error) {
-          const errorMessage =
-            error instanceof Error ? error.message : String(error);
-          if (opts.emit) {
-            opts.emit({
-              type: "tool_result",
-              name: toolUse.name,
-              success: false
+            const toolTimeoutMs = toolDef.timeoutMs ?? 30_000;
+            const timeoutPromise = new Promise<string>((_, reject) => {
+              setTimeout(
+                () =>
+                  reject(
+                    new Error(
+                      `Tool execution timed out after ${toolTimeoutMs / 1000}s`
+                    )
+                  ),
+                toolTimeoutMs
+              );
             });
-          } else if (!opts.silent) {
-            console.log(
-              `${COLOURS.red}[Error: ${errorMessage}]${COLOURS.reset}`
-            );
+            const result = await Promise.race([
+              executionPromise,
+              timeoutPromise
+            ]);
+
+            if (opts.emit) {
+              opts.emit({
+                type: "tool_result",
+                name: toolUse.name,
+                success: true
+              });
+            } else if (!opts.silent) {
+              const logResult =
+                result.length > 100
+                  ? result.slice(0, 100) + "... (truncated)"
+                  : result;
+              console.log(
+                `${COLOURS.green}[Tool use result: ${logResult}]${COLOURS.reset}`
+              );
+            }
+
+            return {
+              result: {
+                type: "tool_result",
+                tool_use_id: toolUse.id,
+                content: result
+              },
+              stopAfterExecute: Boolean(toolDef.stopAfterExecute)
+            };
+          } catch (error) {
+            const errorMessage =
+              error instanceof Error ? error.message : String(error);
+            if (opts.emit) {
+              opts.emit({
+                type: "tool_result",
+                name: toolUse.name,
+                success: false
+              });
+            } else if (!opts.silent) {
+              console.log(
+                `${COLOURS.red}[Error: ${errorMessage}]${COLOURS.reset}`
+              );
+            }
+            return {
+              result: {
+                type: "tool_result",
+                tool_use_id: toolUse.id,
+                content: errorMessage,
+                is_error: true
+              },
+              stopAfterExecute: false
+            };
           }
-          return {
-            type: "tool_result",
-            tool_use_id: toolUse.id,
-            content: errorMessage,
-            is_error: true
-          };
         }
-      })
+      )
     );
 
     if (!opts.emit && !opts.silent) console.log("");
-    return results;
+    return {
+      results: executions.map(execution => execution.result),
+      shouldStopAfterExecute: executions.some(
+        execution => execution.stopAfterExecute
+      )
+    };
   }
 
   private validateInput(input: unknown, schema: { required?: string[] }): void {

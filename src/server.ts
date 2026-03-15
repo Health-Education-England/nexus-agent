@@ -1,6 +1,7 @@
 import "dotenv/config";
 import express from "express";
 import fs from "node:fs/promises";
+import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Agent } from "./agent/agent.js";
@@ -13,6 +14,7 @@ import { MAX_TOKENS } from "./agent/constants.js";
 import {
   DateTimeTool,
   LtftCalculatorTool,
+  ShowLtftFormTool,
   createGoldGuideExpertTool
 } from "./tools/index.js";
 import { PRODUCTION_CONFIG } from "../gold-guide-expert/sub-agent/index.js";
@@ -38,6 +40,7 @@ console.log(
 
 const tools = [
   DateTimeTool,
+  ShowLtftFormTool,
   LtftCalculatorTool,
   createGoldGuideExpertTool({ provider: subAgentProvider })
 ];
@@ -49,7 +52,24 @@ const agent = new Agent(provider, async () => null, tools);
 
 const app = express();
 app.use(express.json({ limit: "1mb" }));
-app.use(express.static(path.join(__dirname, "public")));
+
+const staticDirCandidates = [
+  path.join(__dirname, "public"),
+  path.join(process.cwd(), "src", "public"),
+  path.join(process.cwd(), "public")
+];
+const staticDir =
+  staticDirCandidates.find(candidate => existsSync(candidate)) ??
+  staticDirCandidates[0];
+app.use(
+  express.static(staticDir, {
+    setHeaders: (res, filePath) => {
+      if (filePath.endsWith(".js") || filePath.endsWith(".css")) {
+        res.setHeader("Cache-Control", "no-store");
+      }
+    }
+  })
+);
 
 const CONVERSATIONS_DIR = path.join(process.cwd(), "conversations");
 

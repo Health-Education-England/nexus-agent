@@ -15,9 +15,15 @@ NOTE: This architecture shows other tools in addition to the **ask_gold_guide** 
             ┌───────────────────────────┼───────────────────────────┐
             │                           │                           │
    ┌────────▼───────────────┐  ┌────────▼───────────────┐  ┌────────▼───────────────┐
-   │     ask_gold_guide     │  │    ltft_calculator     │  │  get_current_datetime  │
+   │     ask_gold_guide     │  │     show_ltft_form     │  │  get_current_datetime  │
    │       (Sub-Agent)      │  │         (Tool)         │  │         (Tool)         │
-   └────────┬───────────────┘  └────────────────────────┘  └────────────────────────┘
+   └────────┬───────────────┘  └────────┬───────────────┘  └────────────────────────┘
+            │
+            │                           │
+            │                  ┌────────▼───────────────┐
+            │                  │    ltft_calculator     │
+            │                  │         (Tool)         │
+            │                  └────────────────────────┘
             │
    ┌────────▼────────────────────────────┐
    │          Gold Guide Module          │
@@ -30,6 +36,8 @@ NOTE: This architecture shows other tools in addition to the **ask_gold_guide** 
 ```
 
 The **Orchestrator** is the main LLM agent that receives user queries, decides which tools to call, and synthesises a final response. The **Gold Guide Expert** is a sub-agent that runs an entire retrieval pipeline (CAG or RAG) behind the scenes.
+
+For LTFT date changes, the agent now uses a two-step tool flow: `show_ltft_form` renders an inline form card in the web UI, then the submitted JSON is passed straight to `ltft_calculator` to produce the updated CCT date.
 
 ## Project Structure
 
@@ -54,11 +62,19 @@ src/                        # Orchestrator application
 │   └── index.ts
 ├── public/                 # Web UI static assets (served by src/server.ts)
 │   ├── index.html
-│   ├── scripts/app.js
+│   ├── scripts/
+│   │   ├── app.js                  # App bootstrap + DOM wiring
+│   │   ├── assistant-renderer.js   # Streaming assistant bubble rendering
+│   │   ├── chat-stream.js          # SSE event parsing + dispatch
+│   │   ├── chat-view.js            # Chat history + welcome state rendering
+│   │   ├── conversation-controller.js # Sidebar load/delete/undo flows
+│   │   ├── ltft-widget.js          # Inline LTFT form widget
+│   │   └── widget-registry.js      # Widget type registration
 │   ├── styles/main.css
 │   └── README.md
 ├── tools/                  # Orchestrator tool definitions
 │   ├── datetime.tool.ts
+│   ├── ltft-form.tool.ts
 │   ├── ltft-calculator.tool.ts
 │   └── gold-guide-expert.tool.ts   # Re-exports from gold-guide-expert/sub-agent
 ├── utils/
@@ -155,10 +171,19 @@ Open `http://localhost:3000` when running `npm run dev:web`.
 ### Web UI features (quick-and-dirty)
 
 - Streams assistant responses to the browser over SSE (`POST /chat`).
+- Supports tool-driven UI widgets over the same SSE stream, including the inline LTFT calculator form card.
 - Auto-saves each conversation turn to `conversations/conversation-<id>.json`.
 - Lists existing conversations in the sidebar (`GET /conversations`).
 - Loads a prior conversation (`GET /conversations/:id`).
 - Deletes a conversation with confirmation + short undo window in the UI (server delete endpoint: `DELETE /conversations/:id`).
+- Renders LTFT calculation results as a concise Markdown table returned by the calculator tool.
+
+### LTFT calculator flow
+
+1. The user asks for an LTFT CCT calculation.
+2. The agent calls `show_ltft_form`, which emits a widget event and stops the current inference loop.
+3. The browser renders an inline LTFT form card and submits the completed values as the user's next message.
+4. The agent calls `ltft_calculator` with that JSON payload and returns the recalculated CCT date.
 
 Note: the web UI is intentionally lightweight and currently aimed at local development use.
 

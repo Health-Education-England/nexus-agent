@@ -1,5 +1,36 @@
 import type { ToolDefinition } from "../../providers/types.js";
 
+type SummaryRow = { item: string; details: string };
+
+function formatIsoDateForDisplay(isoDate: string): string {
+  const date = new Date(`${isoDate}T00:00:00Z`);
+  return date.toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+    timeZone: "UTC"
+  });
+}
+
+function formatTrainingExtension(extensionDays: number): string {
+  const years = Math.floor(extensionDays / 365);
+  const daysRemainder = extensionDays % 365;
+
+  if (years > 0 && daysRemainder === 0) {
+    return `${years} year${years === 1 ? "" : "s"} (${extensionDays} days)`;
+  }
+  if (years > 0) {
+    return `${years} year${years === 1 ? "" : "s"} ${daysRemainder} day${daysRemainder === 1 ? "" : "s"} (${extensionDays} days)`;
+  }
+  return `${extensionDays} day${extensionDays === 1 ? "" : "s"}`;
+}
+
+function buildSummaryTable(rows: SummaryRow[]): string {
+  const header = "| Item | Details |\n| --- | --- |";
+  const body = rows.map(row => `| ${row.item} | ${row.details} |`).join("\n");
+  return `${header}\n${body}`;
+}
+
 export const LtftCalculatorTool: ToolDefinition = {
   name: "ltft_calculator",
   description: `Calculates the new CCT (Certificate of Completion of Training) date for an NHS Doctor changing to Less Than Full Time (LTFT) training.
@@ -114,6 +145,41 @@ IMPORTANT instructions for calling this tool:
         new_cct_date: fmt(newCctDate),
         warnings: warnings.length > 0 ? warnings : undefined
       };
+
+      const summaryRows: SummaryRow[] = [
+        { item: "Programme", details: programmeName },
+        {
+          item: "Current CCT date",
+          details: formatIsoDateForDisplay(result.current_cct_date as string)
+        },
+        {
+          item: "Current working pattern",
+          details:
+            (result.current_wte as string) === "100%"
+              ? "100% (full-time)"
+              : (result.current_wte as string)
+        },
+        {
+          item: "Proposed working pattern",
+          details: result.proposed_wte as string
+        },
+        {
+          item: "Proposed start date",
+          details: formatIsoDateForDisplay(result.proposed_start_date as string)
+        },
+        {
+          item: "New CCT date",
+          details: formatIsoDateForDisplay(result.new_cct_date as string)
+        },
+        {
+          item: "Training extension",
+          details: formatTrainingExtension(result.extension_days as number)
+        }
+      ];
+
+      result.summary_rows = summaryRows;
+      result.summary_table_markdown = buildSummaryTable(summaryRows);
+
       return JSON.stringify(result, null, 2);
     } catch (error) {
       const err = error as Error;
