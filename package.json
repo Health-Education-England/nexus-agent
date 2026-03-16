@@ -11,6 +11,7 @@
     "start": "node dist/main.js",
     "start:web": "node dist/src/server.js",
     "dev": "npx tsx src/main.ts",
+    "dev:mcp-app-host": "npm --prefix mcp-app-host run dev:e2e",
     "dev:web": "npx tsx src/server.ts",
     "test": "echo \"Error: no test specified\" && exit 1",
     "docs:setup-parser": "cd gold-guide-expert && python3 -m venv venv && source venv/bin/activate && pip install -r scripts/requirements.txt",

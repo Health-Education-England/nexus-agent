@@ -1,0 +1,32 @@
+{
+  "name": "mcp-app-host",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "build": "tsc --noEmit && concurrently \"cross-env INPUT=index.html vite build\" \"cross-env INPUT=sandbox.html vite build\"",
+    "watch": "concurrently \"cross-env INPUT=index.html vite build --watch\" \"cross-env INPUT=sandbox.html vite build --watch\"",
+    "serve": "npx tsx src/server/serve.ts",
+    "start": "npm run build && npm run serve",
+    "dev": "concurrently \"npm run watch\" \"npm run serve\"",
+    "dev:e2e": "concurrently \"npm --prefix ltft-server run dev\" \"sh -c 'until curl -s http://localhost:3001/mcp >/dev/null 2>&1; do sleep 0.5; done; npm run dev'\""
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.39.0",
+    "@modelcontextprotocol/ext-apps": "^1.0.0",
+    "@modelcontextprotocol/sdk": "^1.24.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^5.1.0"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.17",
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.10.0",
+    "concurrently": "^9.2.1",
+    "cross-env": "^7.0.3",
+    "tsx": "^4.19.0",
+    "typescript": "^5.9.3",
+    "vite": "^6.0.0",
+    "vite-plugin-singlefile": "^2.3.0"
+  }
+}

@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LTFT CCT Calculator</title>
+  <style>
+    :root {
+      --bg: #ffffff;
+      --fg: #1a1a2e;
+      --muted: #6b7280;
+      --border: #e5e7eb;
+      --accent: #2563eb;
+      --accent-hover: #1d4ed8;
+      --error: #dc2626;
+      --success-bg: #f0fdf4;
+      --success-border: #bbf7d0;
+      --card-bg: #f9fafb;
+      --radius: 8px;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--fg);
+      padding: 16px;
+      line-height: 1.5;
+    }
+
+    h1 {
+      font-size: 1.1rem;
+      margin-bottom: 4px;
+    }
+
+    .subtitle {
+      font-size: 0.85rem;
+      color: var(--muted);
+      margin-bottom: 16px;
+    }
+
+    form {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    label {
+      font-size: 0.8rem;
+      font-weight: 600;
+    }
+
+    .optional {
+      font-weight: 400;
+      color: var(--muted);
+    }
+
+    input, select {
+      padding: 8px 10px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      font-size: 0.85rem;
+      background: var(--bg);
+      color: var(--fg);
+    }
+
+    input:focus, select:focus {
+      outline: 2px solid var(--accent);
+      outline-offset: -1px;
+    }
+
+    button[type="submit"] {
+      padding: 10px 16px;
+      background: var(--accent);
+      color: white;
+      border: none;
+      border-radius: var(--radius);
+      font-size: 0.85rem;
+      font-weight: 600;
+      cursor: pointer;
+      margin-top: 4px;
+    }
+
+    button[type="submit"]:hover { background: var(--accent-hover); }
+    button[type="submit"]:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .error {
+      color: var(--error);
+      font-size: 0.8rem;
+    }
+
+    #result {
+      margin-top: 16px;
+      padding: 12px;
+      background: var(--success-bg);
+      border: 1px solid var(--success-border);
+      border-radius: var(--radius);
+      font-size: 0.85rem;
+      display: none;
+    }
+
+    #result h2 {
+      font-size: 0.95rem;
+      margin-bottom: 8px;
+    }
+
+    #result table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    #result th, #result td {
+      text-align: left;
+      padding: 4px 8px;
+      border-bottom: 1px solid var(--success-border);
+      font-size: 0.8rem;
+    }
+
+    #result th { font-weight: 600; }
+
+    .warnings {
+      margin-top: 8px;
+      color: #92400e;
+      font-size: 0.8rem;
+    }
+
+    .warnings li { margin-left: 16px; }
+  </style>
+</head>
+<body>
+  <h1>LTFT CCT Calculator</h1>
+  <p class="subtitle">Enter your training details to calculate your new CCT date.</p>
+
+  <form id="calc-form" novalidate>
+    <div class="field">
+      <label for="programme_name">Programme name <span class="optional">(optional)</span></label>
+      <input type="text" id="programme_name" name="programme_name" placeholder="e.g. General medicine" />
+    </div>
+
+    <div class="field">
+      <label for="current_cct_date">Current CCT date</label>
+      <input type="date" id="current_cct_date" name="current_cct_date" required />
+    </div>
+
+    <div class="row">
+      <div class="field">
+        <label for="current_work_percentage">Current working pattern</label>
+        <select id="current_work_percentage" name="current_work_percentage" required>
+          <option value="1.0" selected>100% - full-time</option>
+          <option value="0.8">80%</option>
+          <option value="0.7">70%</option>
+          <option value="0.6">60%</option>
+          <option value="0.5">50% — half-time</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="proposed_work_percentage">Proposed working pattern</label>
+        <select id="proposed_work_percentage" name="proposed_work_percentage" required>
+          <option value="" disabled selected>Select…</option>
+          <option value="0.5">50% — half-time</option>
+          <option value="0.6">60%</option>
+          <option value="0.7">70%</option>
+          <option value="0.8">80%</option>
+          <option value="1.0">100% - full-time</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="field">
+      <label for="proposed_start_date">Proposed start date</label>
+      <input type="date" id="proposed_start_date" name="proposed_start_date" required />
+    </div>
+
+    <p class="error" id="form-error"></p>
+    <button type="submit" id="submit-btn">Calculate new CCT date →</button>
+  </form>
+
+  <div id="result"></div>
+
+  <script type="module" src="./calculator.ts"></script>
+</body>
+</html>
