@@ -7,6 +7,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { Tool, CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { getToolUiResourceUri } from "@modelcontextprotocol/ext-apps/app-bridge";
+import { getLocalToolByName, getLocalTools } from "./local-tools.js";
 
 const IMPLEMENTATION = { name: "MCP App Host Agent", version: "1.0.0" };
 
@@ -74,6 +75,14 @@ export function getAvailableTools(): {
     }
   }
 
+  for (const tool of getLocalTools()) {
+    anthropicTools.push({
+      name: tool.name,
+      description: tool.description,
+      input_schema: tool.inputSchema
+    });
+  }
+
   return { anthropicTools, toolServerMap };
 }
 
@@ -82,6 +91,12 @@ export async function executeTool(
   toolName: string,
   input: Record<string, unknown>
 ): Promise<{ result: CallToolResult; hasApp: boolean; resourceUri?: string }> {
+  const localTool = getLocalToolByName(toolName);
+  if (localTool) {
+    const result = await localTool.execute(input);
+    return { result, hasApp: false };
+  }
+
   const { toolServerMap } = getAvailableTools();
   const server = toolServerMap.get(toolName);
 
@@ -114,12 +129,19 @@ export function getToolSummaries(): Array<{
   name: string;
   description: string;
 }> {
-  return servers.flatMap(s =>
+  const mcpSummaries = servers.flatMap(s =>
     s.tools.map(t => ({
       name: t.name,
       description: t.description ?? ""
     }))
   );
+
+  const localSummaries = getLocalTools().map(tool => ({
+    name: tool.name,
+    description: tool.description
+  }));
+
+  return [...mcpSummaries, ...localSummaries];
 }
 
 /**
@@ -131,6 +153,15 @@ export function getToolSchema(
 ):
   | { name: string; description: string; input_schema: Record<string, unknown> }
   | undefined {
+  const localTool = getLocalToolByName(toolName);
+  if (localTool) {
+    return {
+      name: localTool.name,
+      description: localTool.description,
+      input_schema: localTool.inputSchema
+    };
+  }
+
   for (const server of servers) {
     const tool = server.tools.find(t => t.name === toolName);
     if (tool) {

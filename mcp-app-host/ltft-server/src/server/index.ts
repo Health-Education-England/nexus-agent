@@ -44,11 +44,27 @@ function createMcpServer(): McpServer {
     "calculate_ltft_cct",
     {
       title: "LTFT CCT Calculator",
-      description: `Calculates the new CCT (Certificate of Completion of Training) date for an NHS Doctor changing to Less Than Full Time (LTFT) training.
-This tool has an interactive form UI — call it immediately when the user mentions LTFT, even with partial arguments. The form will let the user fill in or correct any missing fields.
+      description: `Purpose: Open the LTFT calculator UI and, when submitted from the form, calculate a new CCT date for a doctor changing working pattern.
 
-All dates must be YYYY-MM-DD. All percentages must be decimals between 0 and 1 (e.g. 80% → 0.8).
-Standard LTFT percentages are 50%, 60%, 70%, 80% (and 100% for return to full-time).`,
+Use this tool when:
+- The user explicitly asks to calculate a new CCT date
+- The user asks to open or use the LTFT calculator
+- The user wants to compare LTFT working patterns or see the date impact of a change
+
+Do not use this tool when:
+- The user is asking for general information about LTFT policy, eligibility, process, or rules
+- The user only says "ltft" or gives another brief ambiguous follow-up
+- The user has not yet made clear that they want a calculation
+
+Interaction model:
+- On the first call, this tool usually opens an interactive form UI
+- Pass any known values to prefill the form and omit unknown values
+- The user completes the visible form themselves
+
+Input rules:
+- All dates must be YYYY-MM-DD
+- All percentages must be decimals between 0 and 1, for example 80% = 0.8
+- Standard LTFT percentages are 50%, 60%, 70%, 80%, and 100% for return to full-time`,
       inputSchema: {
         programme_name: z
           .string()

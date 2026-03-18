@@ -3,6 +3,7 @@
  * Framework-free — direct DOM API.
  */
 
+import { marked } from "marked";
 import {
   type ToolCallInfo,
   hasAppHtml,
@@ -13,6 +14,14 @@ import {
 } from "./mcp-bridge.js";
 
 const messagesContainer = document.getElementById("messages")!;
+const pendingToolRows: HTMLDivElement[] = [];
+
+function createToolStatusRow(): HTMLDivElement {
+  const row = document.createElement("div");
+  row.className = "tool-status-row";
+  messagesContainer.appendChild(row);
+  return row;
+}
 
 function isValidResizeMessage(event: MessageEvent): boolean {
   return (
@@ -74,7 +83,7 @@ export function appendUserMessage(text: string): void {
 export function appendAssistantMessage(text: string = ""): HTMLDivElement {
   const el = document.createElement("div");
   el.className = "message assistant";
-  el.textContent = text;
+  if (text) el.innerHTML = marked.parse(text) as string;
   messagesContainer.appendChild(el);
   scrollToBottom();
   return el;
@@ -82,28 +91,38 @@ export function appendAssistantMessage(text: string = ""): HTMLDivElement {
 
 /** Update an existing assistant message element (for streaming). */
 export function updateAssistantMessage(el: HTMLDivElement, text: string): void {
-  el.textContent = text;
+  el.innerHTML = marked.parse(text) as string;
   scrollToBottom();
 }
 
 /** Add a tool-call indicator bubble. */
 export function appendToolCallMessage(toolName: string): void {
+  const row = createToolStatusRow();
   const el = document.createElement("div");
   el.className = "message tool-call";
   el.textContent = `🔧 Calling tool: ${toolName}`;
-  messagesContainer.appendChild(el);
+  row.appendChild(el);
+  pendingToolRows.push(row);
   scrollToBottom();
 }
 
-/** Add a tool-result indicator bubble. */
+/** Add a tool-result indicator bubble.
+ * @param compact — if true, show only the tick + tool name with no result preview
+ *                  (used for text-only tools whose output the agent will present). */
 export function appendToolResultMessage(
   toolName: string,
-  result: string
+  result: string,
+  compact = false
 ): void {
+  const row = pendingToolRows.shift() ?? createToolStatusRow();
   const el = document.createElement("div");
   el.className = "message tool-result";
-  el.textContent = `✅ ${toolName}: ${result.length > 200 ? result.slice(0, 200) + "…" : result}`;
-  messagesContainer.appendChild(el);
+  if (compact) {
+    el.textContent = `✅ ${toolName}`;
+  } else {
+    el.textContent = `✅ ${toolName}: ${result.length > 200 ? result.slice(0, 200) + "…" : result}`;
+  }
+  row.appendChild(el);
   scrollToBottom();
 }
 

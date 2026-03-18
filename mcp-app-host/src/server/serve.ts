@@ -25,7 +25,7 @@ const SANDBOX_PORT = Number.parseInt(process.env.SANDBOX_PORT || "8081", 10);
 const DIST_DIR = join(__dirname, "..", "..", "dist");
 const SERVERS: string[] = process.env.SERVERS
   ? JSON.parse(process.env.SERVERS)
-  : ["http://localhost:3001/mcp"];
+  : ["http://localhost:3001/mcp", "http://localhost:3002/mcp"];
 
 // ============ Host Server (port 8080) ============
 const hostApp = express();

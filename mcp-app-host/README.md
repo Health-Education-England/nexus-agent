@@ -4,15 +4,27 @@ A custom MCP (Model Context Protocol) client and host that renders **MCP Apps** 
 
 The host connects to one or more MCP servers, exposes their tools to a Claude-powered agent (this was the simplest option for me as I have a Claude API for testing stuff), and — when a tool has an associated interactive App UI — automatically renders that App inside a secure sandboxed iframe after the tool call completes. Users can then interact directly with the App form to adjust values and re-run computations without further chat turns.
 
+Current local setup includes two MCP servers by default:
+
+- LTFT calculator MCP server on port `3001`
+- Gold Guide policy MCP server (CAG pipeline) on port `3002`
+
 Built without React or any UI framework, using the [`basic-host`](https://github.com/nicobailon/mcp-apps/tree/main/examples/basic-host) example from `@modelcontextprotocol/ext-apps` as a reference implementation.
 
 ## How It Works
 
 ### Chat & Agent Loop
 
-The user types a message into the chat UI. The browser `POST`s to `/api/chat`, which runs an Anthropic Claude agent loop on the Express server. The agent receives the full tool definitions from all connected MCP servers. Text deltas stream back to the browser in real time via SSE as the agent generates its response. If the agent calls a tool, the server executes it against the appropriate MCP server and feeds the result back, looping until the agent stops requesting tools (up to 10 turns atm). Conversation history is maintained in memory across turns.
+The user types a message into the chat UI. The browser `POST`s to `/api/chat`, which runs an Anthropic Claude agent loop on the Express server. The agent receives the full tool definitions from all connected MCP servers plus local server-side tools. Text deltas stream back to the browser in real time via SSE as the agent generates its response. If the agent calls a tool, the server executes it against the appropriate MCP server (or locally) and feeds the result back, looping until the agent stops requesting tools (up to 10 turns atm). Conversation history is maintained in memory across turns.
 
 The system prompt includes concise tool summaries alongside the full schemas, enabling better tool routing. The architecture also supports a two-pass progressive disclosure mode — where only summaries are sent initially and full schemas are loaded on demand — deactivated atm but can be used when the tool count grows - so as to avoid context window 'bloat'.
+
+### Conversation Flow Updates
+
+- Assistant messages now render Markdown (`marked`) instead of plain text.
+- Tool call/result indicators render as compact status pills in a dedicated row.
+- Post-tool assistant output is rendered in a new message bubble beneath the tool status row for cleaner turn structure.
+- Text-only tool results are shown compactly (`✅ tool_name`) and the assistant delivers the explanation in natural language.
 
 ### MCP App Integration
 
@@ -86,9 +98,9 @@ The client parses the SSE stream progressively, updating the assistant message b
              │  Streamable HTTP         │
              ▼                          ▼
 ┌──────────────────────────────────────────────────┐
-│  MCP Server(s) — e.g. LTFT Server (port 3001)    │
-│  - registerAppTool (calculate_ltft_cct)          │
-│  - registerAppResource (interactive calculator)  │
+│  MCP Server(s)                                    │
+│  - LTFT Server (port 3001, interactive app tool) │
+│  - Gold Guide Server (port 3002, text tool)      │
 │  - Factory pattern: new McpServer per session    │
 └──────────────────────────────────────────────────┘
 ```
@@ -119,6 +131,7 @@ mcp-app-host/
 │       └── agent.ts            # Anthropic Claude agent loop with streaming + tool use
 └── ltft-server/                # Example MCP server with interactive App
     ├── package.json
+    ├── README.md
     ├── tsconfig.json
     ├── vite.config.ts
     └── src/
@@ -128,6 +141,20 @@ mcp-app-host/
         └── server/
             ├── calculator.ts   # Pure LTFT CCT calculation logic
             └── index.ts        # MCP server, registerAppTool/AppResource, Express transport
+└── gold-guide-server/          # Gold Guide MCP server (CAG policy Q&A)
+    ├── package.json
+    ├── tsconfig.json
+    ├── README.md
+    ├── data/
+    │   └── raw/
+    │       └── gold_guide_canonical.jsonl
+    └── src/
+        ├── core/
+        │   ├── cag-pipeline.ts
+        │   ├── query-gold-guide.ts
+        │   └── types.ts
+        └── server/
+            └── index.ts
 ```
 
 ## Key Technologies
@@ -159,7 +186,7 @@ npm run build    # Type-check + Vite build (index.html & sandbox.html → dist/)
 npm run serve    # Start the Express server (serves dist/)
 npm run start    # Build then serve
 npm run dev      # Watch mode + serve (for development)
-npm run dev:e2e  # Start LTFT MCP server + host together (for local E2E)
+npm run dev:e2e  # Start LTFT + Gold Guide MCP servers + host together (for local E2E)
 ```
 
 The host UI will be available at `http://localhost:8080`.
@@ -180,9 +207,10 @@ Or from `mcp-app-host/` directly:
 npm run dev:e2e
 ```
 
-This starts both:
+This starts all required services:
 
 - LTFT MCP server on `http://localhost:3001/mcp`
+- Gold Guide MCP server on `http://localhost:3002/mcp`
 - Host + sandbox on `http://localhost:8080` and `http://localhost:8081`
 
 ### Manual two-terminal option
@@ -197,8 +225,9 @@ npx tsx src/server/index.ts          # Starts on http://localhost:3001/mcp
 # 2. In a separate terminal, configure and start the host
 cd ..                                # Back to mcp-app-host/
 cp .env.example .env                 # Add your ANTHROPIC_API_KEY
-# The default SERVERS value is ["http://localhost:3001/mcp"],
-# which matches the LTFT server above — no need to change .env for this demo.
+# The default SERVERS value includes both:
+# ["http://localhost:3001/mcp","http://localhost:3002/mcp"]
+# For LTFT-only manual demos you can set SERVERS explicitly in .env if needed.
 npm run build
 npm run serve                        # Host on :8080, sandbox on :8081
 
@@ -207,7 +236,9 @@ npm run serve                        # Host on :8080, sandbox on :8081
 #     switching to 60% from August 2026"
 ```
 
-**Flow**: User message → Claude agent calls `calculate_ltft_cct` → server executes tool → SSE streams result + `hasApp: true` → browser fetches App HTML resource → sandbox iframe renders interactive calculator form → user can edit values and recalculate directly.
+**Flow (interactive tool)**: User message → Claude agent calls `calculate_ltft_cct` → server executes tool → SSE streams result + `hasApp: true` → browser fetches App HTML resource → sandbox iframe renders interactive calculator form → user can edit values and recalculate directly.
+
+For Gold Guide policy questions, the flow is text-only (`ask_gold_guide`) with no App iframe.
 
 ## Example: LTFT CCT Calculator
 

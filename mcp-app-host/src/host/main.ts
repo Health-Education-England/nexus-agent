@@ -140,8 +140,37 @@ async function sendMessage(text: string): Promise<void> {
   setInputEnabled(false);
   appendUserMessage(text);
 
-  const el = appendAssistantMessage("");
-  let accumulated = "";
+  let currentAssistantEl: HTMLDivElement | null = null;
+  let currentAssistantText = "";
+  let hasAnyAssistantText = false;
+
+  const ensureAssistantBubble = (): HTMLDivElement => {
+    if (!currentAssistantEl) {
+      currentAssistantEl = appendAssistantMessage("");
+      currentAssistantText = "";
+    }
+    return currentAssistantEl;
+  };
+
+  const appendAssistantDelta = (delta: string): void => {
+    if (!delta) return;
+    const bubble = ensureAssistantBubble();
+    currentAssistantText += delta;
+    hasAnyAssistantText = hasAnyAssistantText || delta.trim().length > 0;
+    updateAssistantMessage(bubble, currentAssistantText);
+  };
+
+  const startNewAssistantBubble = (): void => {
+    currentAssistantEl = null;
+    currentAssistantText = "";
+  };
+
+  const setAssistantMessage = (message: string): void => {
+    const bubble = ensureAssistantBubble();
+    currentAssistantText = message;
+    hasAnyAssistantText = hasAnyAssistantText || message.trim().length > 0;
+    updateAssistantMessage(bubble, message);
+  };
 
   try {
     const res = await fetch("/api/chat", {
@@ -151,13 +180,13 @@ async function sendMessage(text: string): Promise<void> {
     });
 
     if (!res.ok) {
-      updateAssistantMessage(el, `Error: ${res.status} ${res.statusText}`);
+      setAssistantMessage(`Error: ${res.status} ${res.statusText}`);
       return;
     }
 
     const reader = res.body?.getReader();
     if (!reader) {
-      updateAssistantMessage(el, "Error: No response stream");
+      setAssistantMessage("Error: No response stream");
       return;
     }
 
@@ -177,19 +206,18 @@ async function sendMessage(text: string): Promise<void> {
       for (const event of events) {
         switch (event.type) {
           case "text":
-            accumulated += event.text;
-            updateAssistantMessage(el, accumulated);
+            appendAssistantDelta(event.text);
             break;
           case "tool_call":
             appendToolCallMessage(event.name);
             pendingToolCalls.set(event.name, event);
-            // Move assistant text below tool elements so the form
-            // appears above the follow-up text, not below it.
-            el.parentElement?.appendChild(el);
+            // Any assistant text after tool activity should appear
+            // in a fresh bubble below the tool status pills.
+            startNewAssistantBubble();
             break;
           case "tool_result": {
-            appendToolResultMessage(event.name, event.result);
-            el.parentElement?.appendChild(el);
+            // compact = no result preview for text-only tools (agent presents the answer)
+            appendToolResultMessage(event.name, event.result, !event.hasApp);
             // Render MCP App iframe if the tool has a UI
             if (event.hasApp) {
               const pending = pendingToolCalls.get(event.name);
@@ -200,16 +228,16 @@ async function sendMessage(text: string): Promise<void> {
                 event.result
               );
               if (toolCallInfo) {
-                appendAppIframe(toolCallInfo)
-                  .then(() => el.parentElement?.appendChild(el))
-                  .catch(err => log.error("Failed to render App iframe:", err));
+                appendAppIframe(toolCallInfo).catch(err =>
+                  log.error("Failed to render App iframe:", err)
+                );
               }
             }
             pendingToolCalls.delete(event.name);
             break;
           }
           case "error":
-            updateAssistantMessage(el, `Error: ${event.message}`);
+            setAssistantMessage(`Error: ${event.message}`);
             break;
           case "done":
             break;
@@ -218,12 +246,11 @@ async function sendMessage(text: string): Promise<void> {
     }
 
     // If no text was received, show a fallback
-    if (!accumulated) {
-      updateAssistantMessage(el, "No response received.");
+    if (!hasAnyAssistantText) {
+      setAssistantMessage("No response received.");
     }
   } catch (err) {
-    updateAssistantMessage(
-      el,
+    setAssistantMessage(
       `Error: ${err instanceof Error ? err.message : String(err)}`
     );
   } finally {

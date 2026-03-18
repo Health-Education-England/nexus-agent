@@ -8,7 +8,7 @@
     "serve": "npx tsx src/server/serve.ts",
     "start": "npm run build && npm run serve",
     "dev": "concurrently \"npm run watch\" \"npm run serve\"",
-    "dev:e2e": "concurrently \"npm --prefix ltft-server run dev\" \"sh -c 'until curl -s http://localhost:3001/mcp >/dev/null 2>&1; do sleep 0.5; done; npm run dev'\""
+    "dev:e2e": "concurrently \"npm --prefix ltft-server run dev\" \"npm --prefix gold-guide-server run dev\" \"sh -c 'until curl -s http://localhost:3001/mcp >/dev/null 2>&1 && curl -s http://localhost:3002/mcp >/dev/null 2>&1; do sleep 0.5; done; npm run dev'\""
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
@@ -16,7 +16,8 @@
     "@modelcontextprotocol/sdk": "^1.24.0",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
-    "express": "^5.1.0"
+    "express": "^5.1.0",
+    "marked": "^17.0.4"
   },
   "devDependencies": {
     "@types/cors": "^2.8.17",
