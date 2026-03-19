@@ -1,4 +1,5 @@
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import { getSkillContent } from "./skills-registry.js";
 
 const DEFAULT_TIMEZONE = "Europe/London";
 
@@ -6,6 +7,9 @@ type LocalTool = {
   name: string;
   description: string;
   inputSchema: Record<string, unknown>;
+  /** If true, this tool is a meta/infrastructure tool (e.g. read_skill) and
+   *  should not be surfaced to the user as a domain tool call. */
+  isMeta?: boolean;
   execute: (input: Record<string, unknown>) => Promise<CallToolResult>;
 };
 
@@ -126,10 +130,12 @@ function buildDateOffsetResult(input: Record<string, unknown>): CallToolResult {
       ? input.timezone
       : DEFAULT_TIMEZONE;
 
-  const amount =
-    typeof input.amount === "number"
-      ? input.amount
-      : Number.parseInt(String(input.amount ?? "0"), 10);
+  let amount = Number.NaN;
+  if (typeof input.amount === "number") {
+    amount = input.amount;
+  } else if (typeof input.amount === "string") {
+    amount = Number.parseInt(input.amount, 10);
+  }
 
   const unit = typeof input.unit === "string" ? input.unit.toLowerCase() : "";
 
@@ -204,6 +210,29 @@ function buildDateOffsetResult(input: Record<string, unknown>): CallToolResult {
 
 const localTools: LocalTool[] = [
   {
+    name: "read_skill",
+    isMeta: true,
+    description:
+      "Load the full instructions for an Agent Skill before using its tools. Call this once per skill per session before invoking any tool belonging to that skill.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        skill_name: {
+          type: "string",
+          description:
+            "The name of the skill to load (e.g. 'gold-guide', 'ltft-calculator', 'date-tools')."
+        }
+      },
+      required: ["skill_name"]
+    },
+    execute: async input => {
+      const skillName =
+        typeof input.skill_name === "string" ? input.skill_name.trim() : "";
+      const content = getSkillContent(skillName);
+      return { content: [{ type: "text", text: content }] };
+    }
+  },
+  {
     name: "get_current_datetime",
     description:
       "Returns the current date and time. This is the authoritative source for current date/time. If no timezone is provided, defaults to Europe/London.",
@@ -260,4 +289,8 @@ export function getLocalTools(): LocalTool[] {
 
 export function getLocalToolByName(name: string): LocalTool | undefined {
   return localTools.find(tool => tool.name === name);
+}
+
+export function isMetaTool(name: string): boolean {
+  return localTools.find(t => t.name === name)?.isMeta === true;
 }

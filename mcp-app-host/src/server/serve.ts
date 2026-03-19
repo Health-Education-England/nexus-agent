@@ -16,6 +16,7 @@ import { dirname, join } from "node:path";
 import type { McpUiResourceCsp } from "@modelcontextprotocol/ext-apps";
 import { handleChat } from "./agent.js";
 import { connectToServers, getConnectedServers } from "./mcp-client.js";
+import { loadSkills } from "./skills-registry.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -143,6 +144,7 @@ sandboxApp.use((_req, res) => {
 
 // ============ Start both servers ============
 async function start(): Promise<void> {
+  await loadSkills();
   await connectToServers(SERVERS);
 
   const connectedServers = getConnectedServers();

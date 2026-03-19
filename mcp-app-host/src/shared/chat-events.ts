@@ -36,9 +36,23 @@ export type ErrorEvent = {
   message: string;
 };
 
+/** Agent Skill is being loaded (read_skill called). */
+export type SkillLoadEvent = {
+  type: "skill_load";
+  skillName: string;
+};
+
+/** Agent Skill has finished loading and its tools are now available. */
+export type SkillReadyEvent = {
+  type: "skill_ready";
+  skillName: string;
+};
+
 export type ChatEvent =
   | TextEvent
   | ToolCallEvent
   | ToolResultEvent
   | DoneEvent
-  | ErrorEvent;
+  | ErrorEvent
+  | SkillLoadEvent
+  | SkillReadyEvent;

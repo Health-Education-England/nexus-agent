@@ -11,7 +11,11 @@ import {
   updateAssistantMessage,
   appendToolCallMessage,
   appendToolResultMessage,
-  appendAppIframe
+  appendAppIframe,
+  showSkillLoadingIndicator,
+  hideSkillLoadingIndicator,
+  showResponseSynthesisIndicator,
+  hideResponseSynthesisIndicator
 } from "./chat-renderer.js";
 import {
   type ServerInfo,
@@ -27,7 +31,6 @@ const input = document.getElementById("chat-input") as HTMLInputElement;
 const sendBtn = form.querySelector("button") as HTMLButtonElement;
 
 // Browser-side MCP client connections (for App iframe rendering)
-const serverInfos: ServerInfo[] = [];
 const toolServerMap = new Map<string, ServerInfo>();
 
 /** Connect browser-side to all MCP servers for App resource access. */
@@ -39,7 +42,6 @@ async function initMcpConnections(): Promise<void> {
     for (const url of urls) {
       try {
         const info = await connectToServer(new URL(url));
-        serverInfos.push(info);
         for (const [name] of info.tools) {
           toolServerMap.set(name, info);
         }
@@ -93,8 +95,7 @@ function buildToolCallInfo(
   info.appResourcePromise = (async () => {
     const resource = await server.client.readResource({ uri: resourceUri });
     const content = resource.contents[0];
-    const html =
-      "blob" in content ? atob(content.blob as string) : (content.text ?? "");
+    const html = "blob" in content ? atob(content.blob) : (content.text ?? "");
     return { html };
   })();
 
@@ -140,7 +141,9 @@ async function sendMessage(text: string): Promise<void> {
   setInputEnabled(false);
   appendUserMessage(text);
 
-  let currentAssistantEl: HTMLDivElement | null = null;
+  // Create the assistant bubble immediately so the CSS "Thinking…" placeholder
+  // shows during the skill-load round-trip and any other server-side delay.
+  let currentAssistantEl: HTMLDivElement | null = appendAssistantMessage("");
   let currentAssistantText = "";
   let hasAnyAssistantText = false;
 
@@ -161,6 +164,9 @@ async function sendMessage(text: string): Promise<void> {
   };
 
   const startNewAssistantBubble = (): void => {
+    if (currentAssistantEl && currentAssistantText.trim().length === 0) {
+      currentAssistantEl.remove();
+    }
     currentAssistantEl = null;
     currentAssistantText = "";
   };
@@ -206,9 +212,11 @@ async function sendMessage(text: string): Promise<void> {
       for (const event of events) {
         switch (event.type) {
           case "text":
+            hideResponseSynthesisIndicator();
             appendAssistantDelta(event.text);
             break;
           case "tool_call":
+            hideResponseSynthesisIndicator();
             appendToolCallMessage(event.name);
             pendingToolCalls.set(event.name, event);
             // Any assistant text after tool activity should appear
@@ -234,12 +242,27 @@ async function sendMessage(text: string): Promise<void> {
               }
             }
             pendingToolCalls.delete(event.name);
+            showResponseSynthesisIndicator();
             break;
           }
           case "error":
+            hideResponseSynthesisIndicator();
+            hideSkillLoadingIndicator();
             setAssistantMessage(`Error: ${event.message}`);
             break;
+          case "skill_load":
+            hideResponseSynthesisIndicator();
+            // A skill-load is a turn boundary: any text that follows comes
+            // from a new Claude turn, so it should appear in a fresh bubble.
+            startNewAssistantBubble();
+            showSkillLoadingIndicator(event.skillName);
+            break;
+          case "skill_ready":
+            hideSkillLoadingIndicator();
+            break;
           case "done":
+            hideResponseSynthesisIndicator();
+            hideSkillLoadingIndicator();
             break;
         }
       }

@@ -16,6 +16,23 @@ import {
 const messagesContainer = document.getElementById("messages")!;
 const pendingToolRows: HTMLDivElement[] = [];
 
+/** Persistent skill-loading chip (replaced/removed on skill_ready). */
+let skillLoadingChip: HTMLDivElement | null = null;
+let skillLoadingShownAt = 0;
+let pendingHideSkillChipTimeout: number | null = null;
+const SKILL_LOADING_MIN_VISIBLE_MS = 1000;
+let responseSynthesisChip: HTMLDivElement | null = null;
+
+function removeSkillLoadingChip(): void {
+  skillLoadingChip?.remove();
+  skillLoadingChip = null;
+  skillLoadingShownAt = 0;
+  if (pendingHideSkillChipTimeout !== null) {
+    globalThis.clearTimeout(pendingHideSkillChipTimeout);
+    pendingHideSkillChipTimeout = null;
+  }
+}
+
 function createToolStatusRow(): HTMLDivElement {
   const row = document.createElement("div");
   row.className = "tool-status-row";
@@ -157,4 +174,56 @@ export async function appendAppIframe(
     log.error("Failed to load MCP App:", err);
     container.innerHTML = `<div class="message tool-call">Failed to load app: ${err instanceof Error ? err.message : err}</div>`;
   }
+}
+
+/**
+ * Show a subtle inline chip indicating that an Agent Skill is being loaded.
+ * Replaces any existing chip (only one skill loads at a time).
+ */
+export function showSkillLoadingIndicator(skillName: string): void {
+  removeSkillLoadingChip();
+  const chip = document.createElement("div");
+  chip.className = "skill-loading-chip";
+  chip.textContent = `Loading skill: ${skillName}…`;
+  messagesContainer.appendChild(chip);
+  skillLoadingChip = chip;
+  skillLoadingShownAt = Date.now();
+  scrollToBottom();
+}
+
+/** Remove the skill-loading chip (called on skill_ready). */
+export function hideSkillLoadingIndicator(): void {
+  if (!skillLoadingChip) return;
+
+  const elapsed = Date.now() - skillLoadingShownAt;
+  const remaining = SKILL_LOADING_MIN_VISIBLE_MS - elapsed;
+
+  if (remaining <= 0) {
+    removeSkillLoadingChip();
+    return;
+  }
+
+  if (pendingHideSkillChipTimeout !== null) {
+    globalThis.clearTimeout(pendingHideSkillChipTimeout);
+  }
+  pendingHideSkillChipTimeout = window.setTimeout(() => {
+    removeSkillLoadingChip();
+  }, remaining);
+}
+
+/** Show a subtle chip while the assistant is composing a post-tool response. */
+export function showResponseSynthesisIndicator(): void {
+  hideResponseSynthesisIndicator();
+  const chip = document.createElement("div");
+  chip.className = "response-synthesis-chip";
+  chip.textContent = "Preparing response…";
+  messagesContainer.appendChild(chip);
+  responseSynthesisChip = chip;
+  scrollToBottom();
+}
+
+/** Hide the post-tool response synthesis chip. */
+export function hideResponseSynthesisIndicator(): void {
+  responseSynthesisChip?.remove();
+  responseSynthesisChip = null;
 }

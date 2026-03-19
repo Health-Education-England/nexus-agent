@@ -116,6 +116,20 @@ export async function executeTool(
   return { result, hasApp, resourceUri: resourceUri ?? undefined };
 }
 
+/**
+ * Get Anthropic-formatted tool schemas for a specific list of tool names.
+ * Used by the agent to add a skill's tools to the API call once that skill is loaded.
+ * Searches both MCP servers and local tools.
+ */
+export function getToolsForNames(toolNames: string[]): Array<{
+  name: string;
+  description: string;
+  input_schema: Record<string, unknown>;
+}> {
+  const { anthropicTools } = getAvailableTools();
+  return anthropicTools.filter(t => toolNames.includes(t.name));
+}
+
 /** Get connected server info for the browser-side MCP bridge. */
 export function getConnectedServers(): ConnectedServer[] {
   return servers;
