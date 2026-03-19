@@ -1,50 +1,58 @@
 ---
 name: ltft-calculator
-description: Opens an interactive CCT date calculator for Less Than Full Time (LTFT) trainees and calculates the impact of a working-pattern change. Load this skill only when the user explicitly wants to calculate a new CCT date or compare LTFT percentages.
+description: Use for LTFT CCT date calculations or working-pattern change calculations. If the user provides any concrete calculation detail, call the calculator immediately. Do not use for LTFT policy or process questions.
 ---
 
-# LTFT Calculator Skill
+# LTFT Calculator
 
-## Available Tool
+## Trigger
 
-- **calculate_ltft_cct** — Opens the interactive LTFT CCT calculator form and, when submitted, calculates a new CCT date.
+Use this skill when the user wants to:
 
-## When to Use
+- calculate a new CCT date
+- calculate the effect of a working-pattern change on a CCT date
 
-Call `calculate_ltft_cct` ONLY when the user:
+Treat the following as calculation intent:
 
-- Explicitly asks to calculate a new CCT date
-- Wants to work out the impact of changing their working pattern (e.g. going to 60%)
-- Asks to compare different LTFT percentages
-- Asks you to open or use the calculator
+- a date
+- a percentage
+- a timeline
+- a start date
+- a current CCT date
+- a request to open or use the calculator
 
-Do NOT call this tool merely because LTFT was mentioned. If the user asks about LTFT **policy**, **eligibility**, **categories**, or **process**, use the `gold-guide` skill instead.
+## Do Not Use
 
-## Disambiguation
+Do not use this skill for LTFT policy, eligibility, category, or process questions with no calculation intent.
+Use `gold-guide` instead.
 
-If the user's message is brief or ambiguous (e.g. "ltft", "less than full time", "can I go LTFT?"), do NOT jump straight to a tool. Ask one short clarifying question:
+## Required Action
 
-> "Would you like general information about LTFT, or would you like to calculate a new CCT date?"
+Call `calculate_ltft_cct` immediately in the same turn.
 
-Only open the calculator once the user's intent is clearly to calculate.
+Pre-fill any values already provided.
 
-## Pre-filling the Form
+Do not:
 
-The calculator accepts optional pre-fill values. When calling `calculate_ltft_cct`:
+- ask for missing details before calling the tool
+- list required fields in chat
+- wait for the user to supply all inputs in chat
 
-- Pass any values the user has already provided in the conversation (current CCT date, start date, working percentage, etc.)
-- Omit fields you do not know — the user will complete them in the form
-- Do NOT ask the user to repeat information they have already given
+## Clarification Rule
 
-## After the Form Opens — MANDATORY
+Ask a clarifying question only if the message contains no calculation intent at all.
+Examples:
 
-When you call `calculate_ltft_cct` to open the form, your response MUST be exactly **one sentence** that acknowledges the form is already visible:
+- "ltft"
+- "can I go LTFT?"
 
-> "The LTFT CCT calculator is open above — fill in your details and hit Calculate."
+## Required First Response
 
-Do NOT:
+After calling `calculate_ltft_cct`, reply with exactly this sentence and nothing else:
 
-- Say "I'll open" or "I've opened"
-- List form fields or explain what they do
-- Use bullet points
-- Call the tool a second time
+"The LTFT CCT calculator is open above — fill in your details and hit Calculate."
+
+## Subsequent Turns
+
+Do not call the tool again unless the user explicitly asks to open another calculator, for example to compare scenarios side by side.
+Instead, tell the user they can update the form and press Calculate again to compare different scenarios.

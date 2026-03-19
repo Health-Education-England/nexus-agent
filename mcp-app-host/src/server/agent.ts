@@ -5,10 +5,13 @@
  * - Supports multi-turn tool calls (loop until Claude stops requesting tools).
  * - Agent Skills: Claude loads a SKILL.md via read_skill() before using its tools.
  *   Tool schemas are added to the API call progressively as skills are loaded.
+ * - Conversations are persisted via the pluggable ConversationStore.
  */
 
 import Anthropic from "@anthropic-ai/sdk";
 import type { Request, Response } from "express";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import type { ChatEvent } from "../shared/chat-events.js";
 import { getToolsForNames, executeTool } from "./mcp-client.js";
 import { getLocalToolByName, isMetaTool } from "./local-tools.js";
@@ -18,34 +21,57 @@ import {
   hasSkill,
   SKILL_TOOL_MAP
 } from "./skills-registry.js";
+import {
+  FileConversationStore,
+  type ConversationStore,
+  type NewConversationEvent
+} from "./conversation-store/index.js";
 
 const MAX_TOOL_TURNS = 10;
 const MODEL = process.env.ANTHROPIC_MODEL ?? "claude-sonnet-4-20250514";
 const MAX_TOKENS = 4096;
 
-const DEFAULT_PRE_TOOL_SENTENCE =
-  "I'll check that now using the available tool.";
-
-const PRE_TOOL_SENTENCE_BY_TOOL: Record<string, string> = {
-  ask_gold_guide: "I'll check the Gold Guide and pull the exact references.",
-  calculate_ltft_cct: "I'll run the LTFT CCT calculator now.",
-  get_current_datetime: "I'll get the current date and time now.",
-  calculate_date_offset: "I'll calculate that date offset now."
-};
-
 const anthropic = new Anthropic(); // reads ANTHROPIC_API_KEY from env
 
-function getPreToolSentence(toolName: string): string {
-  return PRE_TOOL_SENTENCE_BY_TOOL[toolName] ?? DEFAULT_PRE_TOOL_SENTENCE;
+// ---- Conversation store (swap FileConversationStore for a DB impl later) ----
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const CONVERSATIONS_DIR = join(__dirname, "..", "..", "conversations");
+
+export const conversationStore: ConversationStore = new FileConversationStore(
+  CONVERSATIONS_DIR
+);
+
+// ---- Per-session in-memory state keyed by conversationId ----
+
+type SessionState = {
+  history: Anthropic.MessageParam[];
+  loadedSkills: Set<string>;
+};
+
+const sessions = new Map<string, SessionState>();
+
+function getSession(conversationId: string): SessionState {
+  let session = sessions.get(conversationId);
+  if (!session) {
+    session = { history: [], loadedSkills: new Set() };
+    sessions.set(conversationId, session);
+  }
+  return session;
 }
 
 /** Build the lean core system prompt — persona and skill-loading instructions only. */
 function buildBaseSystemPrompt(): string {
   return `You are a helpful professional AI assistant for NHS postgraduate medical training in the UK.
 
-You have access to Agent Skills — organised sets of tools and instructions. Before using any tool, you MUST first call read_skill() with the relevant skill name to load its instructions. Do this once per skill per session.
+You have access to Agent Skills. Before using any skill tool, you MUST first call read_skill() with the relevant skill name to load its instructions. Do this once per skill per session.
 
-Answer the user's questions directly. When a tool would help, use it. Do not guess or make up information. If you still don't know after using tools, say so. Always be concise and clear.
+Golden Rules:
+- Route before questioning. If the user message contains strong signals for a skill, load that skill immediately. If the request is vague, ask one short clarification question only about the type of help needed. Do not ask for detailed inputs before the relevant skill is loaded. Do not ask for calculator fields, dates, or percentages from memory when a calculator skill may apply.
+- Tools over guessing. Use tools and skills when they are the authoritative source. Do not guess or make up information. If you still don't know after using the available tools, say so.
+- Interactive forms are form-first. Some tools open an interactive form UI visible above the chat. When an interactive form tool applies, call it without asking for the form inputs in chat. After calling it, reply only with the required acknowledgement defined by the skill. Do not list form fields or explain the form unless the skill explicitly requires it.
+- Be concise. Answer directly and keep clarifying questions short.
 
 Date/time (MANDATORY):
 - NEVER assume, estimate, or guess the current date or time — your training data is months or years out of date.
@@ -53,14 +79,11 @@ Date/time (MANDATORY):
 - For ANY date arithmetic ("in 13 weeks", "3 months after", etc.): call read_skill("date-tools") first (if not already loaded), then call calculate_date_offset.
 - Default timezone: Europe/London.
 
-Conversation flow (MANDATORY):
-- If you are about to call any domain tool (not read_skill), first send one short sentence explaining what you will do.
-- After tool results return, provide the final answer in a follow-up response.
-- Do not stop at a pre-tool sentence; always finish with the post-tool answer.
-
 Interactive form tools (MANDATORY):
-Some tools open an interactive form UI (visible to the user above the chat). After calling any such tool, your entire response MUST be exactly ONE short sentence acknowledging the form is open — for example: "The LTFT CCT calculator is open above — fill in your details and hit Calculate."
-Do NOT list form fields, explain what the form does, or use bullet points. The form is self-explanatory. NEVER call the same tool again.`;
+Some tools open an interactive form UI visible above the chat.
+When such a tool applies, call it without asking for the form inputs in chat.
+After calling it, reply only with the acknowledgement required by the loaded skill.
+Do NOT list form fields or explain the form unless the skill explicitly requires it.`;
 }
 
 /** Build the full system prompt: core persona + skills catalog. */
@@ -86,13 +109,6 @@ ${catalog}
 Call read_skill("<skill-name>") to load a skill before using any of its tools.`;
 }
 
-// Per-session in-memory conversation history.
-// A production system would scope this per user/session.
-let conversationHistory: Anthropic.MessageParam[] = [];
-
-/** Tracks which skills have been loaded in the current session. */
-let loadedSkills: Set<string> = new Set();
-
 /** Write a single SSE event to the response stream. */
 function sendEvent(res: Response, event: ChatEvent): void {
   res.write(`data: ${JSON.stringify(event)}\n\n`);
@@ -109,7 +125,7 @@ function sendEvent(res: Response, event: ChatEvent): void {
  *   - gold-guide tools: ask_gold_guide
  *   - ltft-calculator tools: calculate_ltft_cct
  */
-function getToolsForRequest(): Anthropic.Tool[] {
+function getToolsForRequest(loadedSkills: Set<string>): Anthropic.Tool[] {
   // Always include read_skill
   const readSkillTool = getLocalToolByName("read_skill")!;
   const alwaysOn: Anthropic.Tool[] = [
@@ -158,9 +174,14 @@ function toolResultToText(
 /**
  * POST /api/chat handler — streams SSE events.
  * Runs the Claude tool-use loop, streaming text and emitting tool events.
+ *
+ * Accepts { message, conversationId? } in the body.
+ * If conversationId is omitted a new conversation is created.
+ * The conversation_id is sent as the first SSE event so the client can
+ * track and resume the conversation.
  */
 export async function handleChat(req: Request, res: Response): Promise<void> {
-  const { message } = req.body;
+  const { message, conversationId: reqConvId } = req.body;
 
   if (!message || typeof message !== "string") {
     res.status(400).json({ error: "Missing 'message' field" });
@@ -173,33 +194,53 @@ export async function handleChat(req: Request, res: Response): Promise<void> {
   res.setHeader("Connection", "keep-alive");
   res.flushHeaders();
 
-  conversationHistory.push({ role: "user", content: message });
+  // Resolve or create the conversation
+  let conversationId: string;
+  if (typeof reqConvId === "string" && reqConvId.length > 0) {
+    const existing = await conversationStore.get(reqConvId);
+    conversationId = existing
+      ? existing.id
+      : (await conversationStore.create()).id;
+  } else {
+    conversationId = (await conversationStore.create()).id;
+  }
+
+  // Tell the client which conversation this belongs to
+  sendEvent(res, { type: "conversation_id", conversationId });
+
+  const session = getSession(conversationId);
+  session.history.push({ role: "user", content: message });
+
+  // Persist the user message
+  const pendingEvents: NewConversationEvent[] = [
+    { type: "user_message", role: "user", content: { text: message } }
+  ];
 
   try {
     let toolTurns = 0;
 
     // Agent loop: keep calling Claude until it stops requesting tools
     while (toolTurns < MAX_TOOL_TURNS) {
-      let sawTextThisTurn = false;
+      let assistantTextAccumulator = "";
 
       const stream = anthropic.messages.stream({
         model: MODEL,
         max_tokens: MAX_TOKENS,
         system: buildSystemPrompt(),
-        messages: conversationHistory,
-        tools: getToolsForRequest()
+        messages: session.history,
+        tools: getToolsForRequest(session.loadedSkills)
       });
 
       // Stream text deltas to the client as they arrive
       stream.on("text", text => {
-        if (text.trim().length > 0) sawTextThisTurn = true;
+        assistantTextAccumulator += text;
         sendEvent(res, { type: "text", text });
       });
 
       const response = await stream.finalMessage();
 
       // Add the full assistant response to conversation history
-      conversationHistory.push({
+      session.history.push({
         role: "assistant",
         content: response.content
       });
@@ -210,6 +251,15 @@ export async function handleChat(req: Request, res: Response): Promise<void> {
           b.type === "tool_use"
       );
 
+      // Persist assistant text (if any meaningful text was streamed)
+      if (assistantTextAccumulator.trim().length > 0) {
+        pendingEvents.push({
+          type: "assistant_message",
+          role: "assistant",
+          content: { text: assistantTextAccumulator, model: MODEL }
+        });
+      }
+
       if (toolUseBlocks.length === 0) {
         // No tool calls — we're done
         break;
@@ -217,32 +267,31 @@ export async function handleChat(req: Request, res: Response): Promise<void> {
 
       // Execute each tool call and collect results
       const toolResults: Anthropic.ToolResultBlockParam[] = [];
-      let sentFallbackPreToolText = false;
 
       for (const toolUse of toolUseBlocks) {
         const meta = isMetaTool(toolUse.name);
 
-        if (!meta) {
-          // Domain tool — show pre-tool sentence if Claude didn't already say one
-          if (!sawTextThisTurn && !sentFallbackPreToolText) {
-            sendEvent(res, {
-              type: "text",
-              text: getPreToolSentence(toolUse.name)
-            });
-            sentFallbackPreToolText = true;
-          }
-          sendEvent(res, {
-            type: "tool_call",
-            name: toolUse.name,
-            input: toolUse.input as Record<string, unknown>
-          });
-        } else {
+        if (meta) {
           // Meta tool (read_skill) — emit a subtle loading indicator
           const skillName = (toolUse.input as Record<string, unknown>)
             .skill_name;
           sendEvent(res, {
             type: "skill_load",
             skillName: typeof skillName === "string" ? skillName : toolUse.name
+          });
+        } else {
+          sendEvent(res, {
+            type: "tool_call",
+            name: toolUse.name,
+            input: toolUse.input as Record<string, unknown>
+          });
+          pendingEvents.push({
+            type: "tool_call",
+            role: "assistant",
+            content: {
+              name: toolUse.name,
+              input: toolUse.input as Record<string, unknown>
+            }
           });
         }
 
@@ -273,7 +322,7 @@ export async function handleChat(req: Request, res: Response): Promise<void> {
             const skillName = (toolUse.input as Record<string, unknown>)
               .skill_name;
             if (typeof skillName === "string" && hasSkill(skillName)) {
-              loadedSkills.add(skillName);
+              session.loadedSkills.add(skillName);
             }
             sendEvent(res, {
               type: "skill_ready",
@@ -287,6 +336,17 @@ export async function handleChat(req: Request, res: Response): Promise<void> {
               result: resultText,
               hasApp,
               resourceUri
+            });
+            pendingEvents.push({
+              type: "tool_result",
+              role: "assistant",
+              content: {
+                name: toolUse.name,
+                result: resultText,
+                hasApp,
+                resourceUri,
+                isError: false
+              }
             });
           }
 
@@ -313,6 +373,16 @@ export async function handleChat(req: Request, res: Response): Promise<void> {
               result: `Error: ${errMsg}`,
               hasApp: false
             });
+            pendingEvents.push({
+              type: "tool_result",
+              role: "assistant",
+              content: {
+                name: toolUse.name,
+                result: errMsg,
+                hasApp: false,
+                isError: true
+              }
+            });
           }
 
           toolResults.push({
@@ -325,7 +395,7 @@ export async function handleChat(req: Request, res: Response): Promise<void> {
       }
 
       // Add tool results to conversation and loop back for Claude's response
-      conversationHistory.push({ role: "user", content: toolResults });
+      session.history.push({ role: "user", content: toolResults });
       toolTurns++;
     }
   } catch (err) {
@@ -334,12 +404,22 @@ export async function handleChat(req: Request, res: Response): Promise<void> {
     sendEvent(res, { type: "error", message: errMsg });
   }
 
+  // Flush all accumulated events to the store in one write
+  try {
+    await conversationStore.appendEvents(conversationId, pendingEvents);
+  } catch (err) {
+    console.error("[Agent] Failed to persist conversation events:", err);
+  }
+
   sendEvent(res, { type: "done" });
   res.end();
 }
 
-/** Reset the in-memory session (conversation history + loaded skills). */
-export function resetSession(): void {
-  conversationHistory = [];
-  loadedSkills = new Set();
+/** Reset a specific session (or all sessions if no id given). */
+export function resetSession(conversationId?: string): void {
+  if (conversationId) {
+    sessions.delete(conversationId);
+  } else {
+    sessions.clear();
+  }
 }

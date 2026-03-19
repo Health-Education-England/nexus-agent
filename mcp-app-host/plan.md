@@ -117,3 +117,8 @@ New: Core persona + skills catalog in system prompt. Detailed instructions live 
 3. Future skill growth — The architecture is designed so adding a new skill is just: drop
    a SKILL.md into skills/, add an entry to SKILL_TOOL_MAP in skills-registry,
    and optionally connect a new MCP server. No agent.ts changes needed.
+4. Interactive app UX cleanup — The model may still emit a short pre-tool assistant message such
+   as "I'll open the calculator for you" before an app-backed tool call. The host currently renders
+   that text bubble above the tool-call row, which can feel redundant once the tool status pills and
+   interactive form appear. Consider a follow-up change to suppress or collapse that immediately
+   preceding assistant bubble when the tool result has `hasApp: true`.

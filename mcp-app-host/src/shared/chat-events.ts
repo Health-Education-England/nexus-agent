@@ -3,6 +3,12 @@
  * Used by both the server (agent.ts) and client (main.ts).
  */
 
+/** Conversation ID assigned to this chat stream (sent first). */
+export type ConversationIdEvent = {
+  type: "conversation_id";
+  conversationId: string;
+};
+
 /** Assistant text chunk. */
 export type TextEvent = {
   type: "text";
@@ -49,6 +55,7 @@ export type SkillReadyEvent = {
 };
 
 export type ChatEvent =
+  | ConversationIdEvent
   | TextEvent
   | ToolCallEvent
   | ToolResultEvent

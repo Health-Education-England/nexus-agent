@@ -14,7 +14,7 @@ import cors from "cors";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import type { McpUiResourceCsp } from "@modelcontextprotocol/ext-apps";
-import { handleChat } from "./agent.js";
+import { handleChat, conversationStore, resetSession } from "./agent.js";
 import { connectToServers, getConnectedServers } from "./mcp-client.js";
 import { loadSkills } from "./skills-registry.js";
 
@@ -27,6 +27,12 @@ const DIST_DIR = join(__dirname, "..", "..", "dist");
 const SERVERS: string[] = process.env.SERVERS
   ? JSON.parse(process.env.SERVERS)
   : ["http://localhost:3001/mcp", "http://localhost:3002/mcp"];
+
+/** Max age (days) for conversation retention. Override with CONVERSATION_MAX_AGE_DAYS env var. */
+const CONVERSATION_MAX_AGE_DAYS = Number.parseInt(
+  process.env.CONVERSATION_MAX_AGE_DAYS || "30",
+  10
+);
 
 // ============ Host Server (port 8080) ============
 const hostApp = express();
@@ -70,6 +76,43 @@ hostApp.get("/api/health", (_req, res) => {
       tools: server.tools.map(tool => tool.name)
     }))
   });
+});
+
+// ---- Conversation management API ----
+
+/** List all conversations (most-recent first). */
+hostApp.get("/api/conversations", async (_req, res) => {
+  const list = await conversationStore.list();
+  res.json(list);
+});
+
+/** Get a single conversation with its events. */
+hostApp.get("/api/conversations/:id", async (req, res) => {
+  const record = await conversationStore.get(req.params.id);
+  if (!record) {
+    res.status(404).json({ error: "Conversation not found" });
+    return;
+  }
+  const events = await conversationStore.getEvents(req.params.id);
+  res.json({ conversation: record, events });
+});
+
+/** Create a new conversation (returns the record). */
+hostApp.post("/api/conversations", async (_req, res) => {
+  const record = await conversationStore.create();
+  resetSession(); // clear any stale in-memory state
+  res.status(201).json(record);
+});
+
+/** Delete a conversation. */
+hostApp.delete("/api/conversations/:id", async (req, res) => {
+  const deleted = await conversationStore.delete(req.params.id);
+  if (!deleted) {
+    res.status(404).json({ error: "Conversation not found" });
+    return;
+  }
+  resetSession(req.params.id);
+  res.status(204).end();
 });
 
 // Agent chat endpoint
@@ -146,6 +189,20 @@ sandboxApp.use((_req, res) => {
 async function start(): Promise<void> {
   await loadSkills();
   await connectToServers(SERVERS);
+
+  // Purge stale conversations on startup
+  try {
+    const purged = await conversationStore.purgeOlderThan(
+      CONVERSATION_MAX_AGE_DAYS
+    );
+    if (purged > 0) {
+      console.log(
+        `Purged ${purged} conversation(s) older than ${CONVERSATION_MAX_AGE_DAYS} days`
+      );
+    }
+  } catch (err) {
+    console.warn("Conversation purge failed:", err);
+  }
 
   const connectedServers = getConnectedServers();
   const connectedToolCount = connectedServers.reduce(

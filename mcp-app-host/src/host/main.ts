@@ -2,6 +2,7 @@
  * Chat UI entry point.
  * Handles user input and streams responses from /api/chat via SSE.
  * Connects to MCP servers browser-side for App iframe rendering.
+ * Tracks the active conversationId so messages belong to one thread.
  */
 
 import type { ChatEvent, ToolCallEvent } from "../shared/chat-events.js";
@@ -32,6 +33,9 @@ const sendBtn = form.querySelector("button") as HTMLButtonElement;
 
 // Browser-side MCP client connections (for App iframe rendering)
 const toolServerMap = new Map<string, ServerInfo>();
+
+// Active conversation ID — set by the server on first message, reused for the session.
+let currentConversationId: string | null = null;
 
 /** Connect browser-side to all MCP servers for App resource access. */
 async function initMcpConnections(): Promise<void> {
@@ -126,7 +130,7 @@ function parseSSEEvents(
 
   for (const line of lines) {
     const trimmed = line.trim();
-    if (!trimmed || !trimmed.startsWith("data: ")) continue;
+    if (!trimmed?.startsWith("data: ")) continue;
     try {
       events.push(JSON.parse(trimmed.slice(6)));
     } catch {
@@ -182,7 +186,10 @@ async function sendMessage(text: string): Promise<void> {
     const res = await fetch("/api/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message: text })
+      body: JSON.stringify({
+        message: text,
+        conversationId: currentConversationId
+      })
     });
 
     if (!res.ok) {
@@ -211,6 +218,9 @@ async function sendMessage(text: string): Promise<void> {
 
       for (const event of events) {
         switch (event.type) {
+          case "conversation_id":
+            currentConversationId = event.conversationId;
+            break;
           case "text":
             hideResponseSynthesisIndicator();
             appendAssistantDelta(event.text);
