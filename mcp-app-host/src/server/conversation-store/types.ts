@@ -45,6 +45,10 @@ export type ConversationSummary = Pick<
   "id" | "title" | "createdAt" | "updatedAt"
 >;
 
+export type ConversationUpdate = Partial<
+  Pick<ConversationRecord, "title" | "model" | "metadata">
+>;
+
 /**
  * Swap-friendly storage interface.
  * Every method is async so implementations can use file I/O, HTTP, or a DB.
@@ -55,6 +59,12 @@ export type ConversationStore = {
 
   /** Get conversation metadata (null if not found). */
   get(id: string): Promise<ConversationRecord | null>;
+
+  /** Update mutable conversation metadata (null if not found). */
+  update(
+    id: string,
+    updates: ConversationUpdate
+  ): Promise<ConversationRecord | null>;
 
   /** List conversations, most-recently-updated first. */
   list(): Promise<ConversationSummary[]>;

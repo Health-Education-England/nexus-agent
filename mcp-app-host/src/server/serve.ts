@@ -104,6 +104,49 @@ hostApp.post("/api/conversations", async (_req, res) => {
   res.status(201).json(record);
 });
 
+/** Update a conversation title or metadata. */
+hostApp.patch("/api/conversations/:id", async (req, res) => {
+  const { title, model, metadata } = req.body ?? {};
+
+  if (title === undefined && model === undefined && metadata === undefined) {
+    res.status(400).json({ error: "No supported fields provided" });
+    return;
+  }
+
+  if (title !== undefined && typeof title !== "string") {
+    res.status(400).json({ error: "title must be a string" });
+    return;
+  }
+
+  if (model !== undefined && typeof model !== "string") {
+    res.status(400).json({ error: "model must be a string" });
+    return;
+  }
+
+  if (
+    metadata !== undefined &&
+    (metadata === null ||
+      typeof metadata !== "object" ||
+      Array.isArray(metadata))
+  ) {
+    res.status(400).json({ error: "metadata must be an object" });
+    return;
+  }
+
+  const record = await conversationStore.update(req.params.id, {
+    title,
+    model,
+    metadata
+  });
+
+  if (!record) {
+    res.status(404).json({ error: "Conversation not found" });
+    return;
+  }
+
+  res.json(record);
+});
+
 /** Delete a conversation. */
 hostApp.delete("/api/conversations/:id", async (req, res) => {
   const deleted = await conversationStore.delete(req.params.id);

@@ -51,6 +51,11 @@ type SessionState = {
 };
 
 const sessions = new Map<string, SessionState>();
+const TOOL_NAME_TO_SKILL = new Map<string, string>(
+  Object.entries(SKILL_TOOL_MAP).flatMap(([skillName, toolNames]) =>
+    toolNames.map(toolName => [toolName, skillName] as const)
+  )
+);
 
 function getSession(conversationId: string): SessionState {
   let session = sessions.get(conversationId);
@@ -58,6 +63,163 @@ function getSession(conversationId: string): SessionState {
     session = { history: [], loadedSkills: new Set() };
     sessions.set(conversationId, session);
   }
+  return session;
+}
+
+function getTextContent(content: Record<string, unknown>): string {
+  return typeof content.text === "string" ? content.text : "";
+}
+
+function getToolName(content: Record<string, unknown>): string | null {
+  return typeof content.name === "string" ? content.name : null;
+}
+
+function getToolInput(
+  content: Record<string, unknown>
+): Record<string, unknown> {
+  const input = content.input;
+  return input && typeof input === "object" && !Array.isArray(input)
+    ? (input as Record<string, unknown>)
+    : {};
+}
+
+function getToolResultText(content: Record<string, unknown>): string {
+  return typeof content.result === "string" ? content.result : "No result.";
+}
+
+function appendAssistantToolUses(
+  history: Anthropic.MessageParam[],
+  toolUses: Array<{
+    type: "tool_use";
+    id: string;
+    name: string;
+    input: Record<string, unknown>;
+  }>
+): void {
+  const lastMessage = history.at(-1);
+  if (lastMessage?.role === "assistant") {
+    const existingContent = Array.isArray(lastMessage.content)
+      ? [...lastMessage.content]
+      : typeof lastMessage.content === "string"
+        ? [{ type: "text" as const, text: lastMessage.content }]
+        : [];
+
+    lastMessage.content = [...existingContent, ...toolUses];
+    return;
+  }
+
+  history.push({ role: "assistant", content: toolUses });
+}
+
+async function hydrateSessionIfNeeded(
+  conversationId: string
+): Promise<SessionState> {
+  const existingSession = sessions.get(conversationId);
+  if (existingSession) return existingSession;
+
+  const storedConversation = await conversationStore.get(conversationId);
+  if (!storedConversation) {
+    return getSession(conversationId);
+  }
+
+  const events = await conversationStore.getEvents(conversationId);
+  const history: Anthropic.MessageParam[] = [];
+  const loadedSkills = new Set<string>();
+
+  let index = 0;
+  while (index < events.length) {
+    const event = events[index];
+
+    if (event.type === "user_message") {
+      const text = getTextContent(event.content);
+      if (text) {
+        history.push({ role: "user", content: text });
+      }
+      index++;
+      continue;
+    }
+
+    if (event.type === "assistant_message") {
+      const text = getTextContent(event.content);
+      if (text) {
+        history.push({ role: "assistant", content: text });
+      }
+      index++;
+      continue;
+    }
+
+    if (event.type === "tool_call") {
+      const toolUses: Array<{
+        type: "tool_use";
+        id: string;
+        name: string;
+        input: Record<string, unknown>;
+      }> = [];
+      const toolResults: Anthropic.ToolResultBlockParam[] = [];
+      const pendingToolUses: Array<{ id: string; name: string }> = [];
+
+      while (index < events.length) {
+        const currentEvent = events[index];
+        if (
+          currentEvent.type !== "tool_call" &&
+          currentEvent.type !== "tool_result"
+        ) {
+          break;
+        }
+
+        if (currentEvent.type === "tool_call") {
+          const name = getToolName(currentEvent.content) ?? "unknown_tool";
+          const toolUseId = `rehydrated-${currentEvent.id}`;
+          toolUses.push({
+            type: "tool_use",
+            id: toolUseId,
+            name,
+            input: getToolInput(currentEvent.content)
+          });
+          pendingToolUses.push({ id: toolUseId, name });
+
+          const skillName = TOOL_NAME_TO_SKILL.get(name);
+          if (skillName) {
+            loadedSkills.add(skillName);
+          }
+        } else {
+          const name = getToolName(currentEvent.content);
+          const matchedIndex =
+            name !== null
+              ? pendingToolUses.findIndex(toolUse => toolUse.name === name)
+              : -1;
+          const matchedToolUse =
+            matchedIndex >= 0
+              ? pendingToolUses.splice(matchedIndex, 1)[0]
+              : pendingToolUses.shift();
+
+          if (matchedToolUse) {
+            toolResults.push({
+              type: "tool_result",
+              tool_use_id: matchedToolUse.id,
+              content: getToolResultText(currentEvent.content),
+              is_error: Boolean(currentEvent.content.isError)
+            });
+          }
+        }
+
+        index++;
+      }
+
+      if (toolUses.length > 0) {
+        appendAssistantToolUses(history, toolUses);
+      }
+      if (toolResults.length > 0) {
+        history.push({ role: "user", content: toolResults });
+      }
+      continue;
+    }
+
+    index++;
+  }
+
+  const session: SessionState = { history, loadedSkills };
+  sessions.set(conversationId, session);
   return session;
 }
 
@@ -208,7 +370,7 @@ export async function handleChat(req: Request, res: Response): Promise<void> {
   // Tell the client which conversation this belongs to
   sendEvent(res, { type: "conversation_id", conversationId });
 
-  const session = getSession(conversationId);
+  const session = await hydrateSessionIfNeeded(conversationId);
   session.history.push({ role: "user", content: message });
 
   // Persist the user message

@@ -87,6 +87,14 @@ function scrollToBottom(): void {
   messagesContainer.scrollTop = messagesContainer.scrollHeight;
 }
 
+/** Clear the chat transcript and reset transient renderer state. */
+export function clearMessages(): void {
+  pendingToolRows.length = 0;
+  removeSkillLoadingChip();
+  hideResponseSynthesisIndicator();
+  messagesContainer.innerHTML = "";
+}
+
 /** Add a user message bubble to the chat. */
 export function appendUserMessage(text: string): void {
   const el = document.createElement("div");

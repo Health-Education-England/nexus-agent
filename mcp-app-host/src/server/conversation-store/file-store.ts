@@ -13,6 +13,7 @@ import type {
   ConversationRecord,
   ConversationStore,
   ConversationSummary,
+  ConversationUpdate,
   NewConversationEvent
 } from "./types.js";
 
@@ -22,12 +23,40 @@ type PersistedConversation = {
   nextSeq: number;
 };
 
+const DEFAULT_CONVERSATION_TITLE = "New conversation";
+const MAX_DERIVED_TITLE_LENGTH = 60;
+
 function makeId(): string {
   return crypto.randomUUID();
 }
 
 function sanitizeFileName(id: string): string {
   return id.replaceAll(/[^a-zA-Z0-9_-]/g, "_");
+}
+
+function deriveConversationTitle(text: string): string {
+  const normalized = text.replaceAll(/\s+/g, " ").trim();
+  if (!normalized) return DEFAULT_CONVERSATION_TITLE;
+
+  if (normalized.length <= MAX_DERIVED_TITLE_LENGTH) {
+    return normalized;
+  }
+
+  return `${normalized.slice(0, MAX_DERIVED_TITLE_LENGTH).trimEnd()}...`;
+}
+
+function getFirstUserMessageText(
+  events: NewConversationEvent[]
+): string | null {
+  for (const event of events) {
+    if (event.type !== "user_message") continue;
+    const text = event.content.text;
+    if (typeof text === "string" && text.trim().length > 0) {
+      return text;
+    }
+  }
+
+  return null;
 }
 
 export class FileConversationStore implements ConversationStore {
@@ -57,7 +86,9 @@ export class FileConversationStore implements ConversationStore {
 
   // ---- ConversationStore implementation ----
 
-  async create(title = "New conversation"): Promise<ConversationRecord> {
+  async create(
+    title = DEFAULT_CONVERSATION_TITLE
+  ): Promise<ConversationRecord> {
     const id = makeId();
     const now = new Date().toISOString();
     const record: ConversationRecord = {
@@ -72,6 +103,32 @@ export class FileConversationStore implements ConversationStore {
 
   async get(id: string): Promise<ConversationRecord | null> {
     return (await this.read(id))?.conversation ?? null;
+  }
+
+  async update(
+    id: string,
+    updates: ConversationUpdate
+  ): Promise<ConversationRecord | null> {
+    const persisted = await this.read(id);
+    if (!persisted) return null;
+
+    const nextTitle = updates.title?.trim();
+    persisted.conversation = {
+      ...persisted.conversation,
+      ...updates,
+      ...(updates.title !== undefined
+        ? {
+            title:
+              nextTitle && nextTitle.length > 0
+                ? nextTitle
+                : persisted.conversation.title
+          }
+        : {}),
+      updatedAt: new Date().toISOString()
+    };
+
+    await this.write(id, persisted);
+    return persisted.conversation;
   }
 
   async list(): Promise<ConversationSummary[]> {
@@ -109,6 +166,17 @@ export class FileConversationStore implements ConversationStore {
 
     const persisted = await this.read(conversationId);
     if (!persisted) throw new Error(`Conversation ${conversationId} not found`);
+
+    if (
+      persisted.events.length === 0 &&
+      persisted.conversation.title === DEFAULT_CONVERSATION_TITLE
+    ) {
+      const firstUserMessage = getFirstUserMessageText(events);
+      if (firstUserMessage) {
+        persisted.conversation.title =
+          deriveConversationTitle(firstUserMessage);
+      }
+    }
 
     const now = new Date().toISOString();
     const appended: ConversationEvent[] = events.map(ev => ({

@@ -1,11 +1,14 @@
 /**
  * Chat UI entry point.
- * Handles user input and streams responses from /api/chat via SSE.
- * Connects to MCP servers browser-side for App iframe rendering.
- * Tracks the active conversationId so messages belong to one thread.
+ * Handles conversation list CRUD, transcript rendering, and SSE chat streaming.
  */
 
 import type { ChatEvent, ToolCallEvent } from "../shared/chat-events.js";
+import type {
+  ConversationEvent,
+  ConversationRecord,
+  ConversationSummary
+} from "../server/conversation-store/index.js";
 import {
   appendUserMessage,
   appendAssistantMessage,
@@ -13,6 +16,7 @@ import {
   appendToolCallMessage,
   appendToolResultMessage,
   appendAppIframe,
+  clearMessages,
   showSkillLoadingIndicator,
   hideSkillLoadingIndicator,
   showResponseSynthesisIndicator,
@@ -27,15 +31,679 @@ import {
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { getToolUiResourceUri } from "@modelcontextprotocol/ext-apps/app-bridge";
 
+type ConversationPayload = {
+  conversation: ConversationRecord;
+  events: ConversationEvent[];
+};
+
+type PendingDelete = {
+  title: string;
+  timer: number;
+};
+
+const SOFT_DELETE_WINDOW_MS = 10000;
+const DEFAULT_CONVERSATION_TITLE = "New conversation";
+const MAX_DERIVED_TITLE_LENGTH = 60;
+const WELCOME_MESSAGE =
+  "Hello! Start a new conversation or reopen a saved one from the sidebar.";
+const EMPTY_CONVERSATION_MESSAGE =
+  "This conversation is empty. Ask anything to begin.";
+
 const form = document.getElementById("chat-form") as HTMLFormElement;
 const input = document.getElementById("chat-input") as HTMLInputElement;
 const sendBtn = form.querySelector("button") as HTMLButtonElement;
+const menuBtn = document.getElementById("menu-btn") as HTMLButtonElement;
+const sidebar = document.getElementById("sidebar") as HTMLElement;
+const sidebarOverlay = document.getElementById(
+  "sidebar-overlay"
+) as HTMLButtonElement;
+const conversationList = document.getElementById(
+  "conversation-list"
+) as HTMLUListElement;
+const newConversationBtn = document.getElementById(
+  "new-conversation-btn"
+) as HTMLButtonElement;
+const activeConversationTitleEl = document.getElementById(
+  "active-conversation-title"
+) as HTMLHeadingElement;
+const activeConversationMetaEl = document.getElementById(
+  "active-conversation-meta"
+) as HTMLParagraphElement;
+const deleteDialog = document.getElementById(
+  "delete-dialog"
+) as HTMLDialogElement;
+const deleteDialogText = document.getElementById(
+  "delete-dialog-text"
+) as HTMLParagraphElement;
+const deleteCancelBtn = document.getElementById(
+  "delete-cancel-btn"
+) as HTMLButtonElement;
+const deleteConfirmBtn = document.getElementById(
+  "delete-confirm-btn"
+) as HTMLButtonElement;
+const toast = document.getElementById("toast") as HTMLDivElement;
+const toastText = document.getElementById("toast-text") as HTMLDivElement;
+const toastUndoBtn = document.getElementById(
+  "toast-undo-btn"
+) as HTMLButtonElement;
+const toastCloseBtn = document.getElementById(
+  "toast-close-btn"
+) as HTMLButtonElement;
 
-// Browser-side MCP client connections (for App iframe rendering)
 const toolServerMap = new Map<string, ServerInfo>();
+const pendingDeletes = new Map<string, PendingDelete>();
 
-// Active conversation ID — set by the server on first message, reused for the session.
 let currentConversationId: string | null = null;
+let currentConversationTitle = "New conversation";
+let conversations: ConversationSummary[] = [];
+let renameConversationId: string | null = null;
+let deleteConversationId: string | null = null;
+let deleteConversationTitle = "";
+let lastFocusedDialogTarget: HTMLElement | null = null;
+let undoConversationId: string | null = null;
+let toastTimer: number | null = null;
+let toastCountdownTimer: number | null = null;
+let sidebarOpen = false;
+
+function deriveConversationTitle(text: string): string {
+  const normalized = text.replaceAll(/\s+/g, " ").trim();
+  if (!normalized) return DEFAULT_CONVERSATION_TITLE;
+
+  if (normalized.length <= MAX_DERIVED_TITLE_LENGTH) {
+    return normalized;
+  }
+
+  return `${normalized.slice(0, MAX_DERIVED_TITLE_LENGTH).trimEnd()}...`;
+}
+
+function getConversationSummary(id: string | null): ConversationSummary | null {
+  if (!id) return null;
+  return conversations.find(conversation => conversation.id === id) ?? null;
+}
+
+function setInputEnabled(enabled: boolean): void {
+  input.disabled = !enabled;
+  sendBtn.disabled = !enabled;
+  if (enabled) input.focus();
+}
+
+function setSidebarOpen(open: boolean): void {
+  sidebarOpen = open;
+  document.body.classList.toggle("sidebar-open", open);
+  sidebar.classList.toggle("open", open);
+  sidebarOverlay.hidden = !open;
+  sidebarOverlay.classList.toggle("open", open);
+}
+
+function closeSidebar(): void {
+  setSidebarOpen(false);
+}
+
+function applyLocalConversationTitle(title: string): void {
+  currentConversationTitle = title;
+
+  if (currentConversationId) {
+    conversations = conversations.map(conversation =>
+      conversation.id === currentConversationId
+        ? {
+            ...conversation,
+            title,
+            updatedAt: new Date().toISOString()
+          }
+        : conversation
+    );
+  }
+
+  renderConversationList();
+  updateConversationHeader();
+}
+
+function formatRelativeDate(iso: string): string {
+  const date = new Date(iso);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffDays = Math.floor(diffMs / 86_400_000);
+
+  if (diffDays <= 0) return "Today";
+  if (diffDays === 1) return "Yesterday";
+  if (diffDays < 7) return `${diffDays} days ago`;
+
+  return date.toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "short"
+  });
+}
+
+function updateConversationHeader(): void {
+  const activeConversation = getConversationSummary(currentConversationId);
+  if (activeConversation) {
+    currentConversationTitle = activeConversation.title;
+    activeConversationTitleEl.textContent = activeConversation.title;
+    activeConversationMetaEl.textContent = `Updated ${formatRelativeDate(
+      activeConversation.updatedAt
+    )}`;
+    return;
+  }
+
+  activeConversationTitleEl.textContent = currentConversationTitle;
+  activeConversationMetaEl.textContent =
+    currentConversationId !== null
+      ? "Saved conversation"
+      : currentConversationTitle === DEFAULT_CONVERSATION_TITLE
+        ? "Unsaved draft"
+        : "Creating conversation";
+}
+
+function clearToastTimers(): void {
+  if (toastTimer !== null) {
+    window.clearTimeout(toastTimer);
+    toastTimer = null;
+  }
+  if (toastCountdownTimer !== null) {
+    window.clearInterval(toastCountdownTimer);
+    toastCountdownTimer = null;
+  }
+}
+
+function hideToast(): void {
+  clearToastTimers();
+  toast.classList.remove("open");
+  toastUndoBtn.hidden = true;
+}
+
+function showToast(
+  message: string,
+  options: {
+    undo?: boolean;
+    duration?: number;
+    countdownSeconds?: number;
+    countdownFormatter?: (seconds: number) => string;
+  } = {}
+): void {
+  const {
+    undo = false,
+    duration = 3000,
+    countdownSeconds,
+    countdownFormatter
+  } = options;
+
+  clearToastTimers();
+  toastText.textContent = message;
+
+  if (countdownSeconds && countdownSeconds > 0) {
+    let remaining = countdownSeconds;
+    const formatter =
+      countdownFormatter ?? ((seconds: number) => `${message} (${seconds}s)`);
+    toastText.textContent = formatter(remaining);
+    toastCountdownTimer = window.setInterval(() => {
+      remaining -= 1;
+      if (remaining <= 0) {
+        if (toastCountdownTimer !== null) {
+          window.clearInterval(toastCountdownTimer);
+          toastCountdownTimer = null;
+        }
+        return;
+      }
+      toastText.textContent = formatter(remaining);
+    }, 1000);
+  }
+
+  toastUndoBtn.hidden = !undo;
+  toast.classList.add("open");
+  toastTimer = window.setTimeout(() => {
+    hideToast();
+  }, duration);
+}
+
+function renderDraftConversation(): void {
+  clearMessages();
+  appendAssistantMessage(WELCOME_MESSAGE);
+}
+
+function renderEmptyConversation(): void {
+  clearMessages();
+  appendAssistantMessage(EMPTY_CONVERSATION_MESSAGE);
+}
+
+function queuePendingToolCall(
+  queue: Map<string, ToolCallEvent[]>,
+  event: ToolCallEvent
+): void {
+  const existing = queue.get(event.name) ?? [];
+  existing.push(event);
+  queue.set(event.name, existing);
+}
+
+function dequeuePendingToolCall(
+  queue: Map<string, ToolCallEvent[]>,
+  toolName: string
+): ToolCallEvent | null {
+  const existing = queue.get(toolName);
+  if (!existing || existing.length === 0) return null;
+  const next = existing.shift() ?? null;
+  if (existing.length === 0) {
+    queue.delete(toolName);
+  }
+  return next;
+}
+
+function getStringValue(value: unknown, fallback = ""): string {
+  return typeof value === "string" ? value : fallback;
+}
+
+function getObjectValue(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function openDeleteDialog(id: string, title: string): void {
+  deleteConversationId = id;
+  deleteConversationTitle = title;
+  deleteDialogText.textContent = `This will permanently remove "${title}".`;
+  lastFocusedDialogTarget = document.activeElement as HTMLElement | null;
+  deleteDialog.showModal();
+  deleteConfirmBtn.focus();
+}
+
+function closeDeleteDialog(): void {
+  if (deleteDialog.open) {
+    deleteDialog.close();
+  }
+  deleteConversationId = null;
+  deleteConversationTitle = "";
+  lastFocusedDialogTarget?.focus();
+  lastFocusedDialogTarget = null;
+}
+
+function updateConversationSelectionState(): void {
+  for (const item of conversationList.querySelectorAll<HTMLElement>(
+    ".conversation-item"
+  )) {
+    item.classList.toggle("active", item.dataset.id === currentConversationId);
+  }
+}
+
+function renderConversationList(): void {
+  const visibleConversations = conversations.filter(
+    conversation => !pendingDeletes.has(conversation.id)
+  );
+
+  conversationList.innerHTML = "";
+
+  if (visibleConversations.length === 0) {
+    const emptyItem = document.createElement("li");
+    emptyItem.className = "conversation-empty";
+    emptyItem.textContent = "No saved conversations yet.";
+    conversationList.appendChild(emptyItem);
+    return;
+  }
+
+  for (const conversation of visibleConversations) {
+    const item = document.createElement("li");
+    item.className = "conversation-item";
+    item.dataset.id = conversation.id;
+
+    if (renameConversationId === conversation.id) {
+      item.classList.add("editing");
+
+      const formEl = document.createElement("form");
+      formEl.className = "conversation-rename-form";
+
+      const inputEl = document.createElement("input");
+      inputEl.className = "conversation-rename-input";
+      inputEl.type = "text";
+      inputEl.maxLength = 120;
+      inputEl.value = conversation.title;
+      inputEl.setAttribute("aria-label", "Conversation title");
+
+      const actionRow = document.createElement("div");
+      actionRow.className = "conversation-rename-actions";
+
+      const saveBtn = document.createElement("button");
+      saveBtn.type = "submit";
+      saveBtn.className = "conversation-inline-btn primary";
+      saveBtn.textContent = "Save";
+
+      const cancelBtn = document.createElement("button");
+      cancelBtn.type = "button";
+      cancelBtn.className = "conversation-inline-btn";
+      cancelBtn.textContent = "Cancel";
+
+      cancelBtn.addEventListener("click", () => {
+        renameConversationId = null;
+        renderConversationList();
+      });
+
+      formEl.addEventListener("submit", async event => {
+        event.preventDefault();
+        await renameConversation(conversation.id, inputEl.value);
+      });
+
+      inputEl.addEventListener("keydown", event => {
+        if (event.key === "Escape") {
+          renameConversationId = null;
+          renderConversationList();
+        }
+      });
+
+      actionRow.append(saveBtn, cancelBtn);
+      formEl.append(inputEl, actionRow);
+      item.appendChild(formEl);
+      conversationList.appendChild(item);
+      continue;
+    }
+
+    if (conversation.id === currentConversationId) {
+      item.classList.add("active");
+    }
+
+    const selectBtn = document.createElement("button");
+    selectBtn.type = "button";
+    selectBtn.className = "conversation-select";
+    selectBtn.setAttribute(
+      "aria-label",
+      `Load conversation ${conversation.title}`
+    );
+
+    const titleEl = document.createElement("span");
+    titleEl.className = "conversation-title";
+    titleEl.textContent = conversation.title;
+
+    const metaEl = document.createElement("span");
+    metaEl.className = "conversation-meta";
+    metaEl.textContent = `Updated ${formatRelativeDate(conversation.updatedAt)}`;
+
+    selectBtn.append(titleEl, metaEl);
+    selectBtn.addEventListener("click", async () => {
+      await loadConversation(conversation.id);
+    });
+
+    const actions = document.createElement("div");
+    actions.className = "conversation-actions";
+
+    const renameBtn = document.createElement("button");
+    renameBtn.type = "button";
+    renameBtn.className = "conversation-action-btn";
+    renameBtn.textContent = "Rename";
+    renameBtn.addEventListener("click", () => {
+      renameConversationId = conversation.id;
+      renderConversationList();
+      requestAnimationFrame(() => {
+        const renameInput = conversationList.querySelector<HTMLInputElement>(
+          ".conversation-rename-input"
+        );
+        renameInput?.focus();
+        renameInput?.select();
+      });
+    });
+
+    const deleteBtn = document.createElement("button");
+    deleteBtn.type = "button";
+    deleteBtn.className = "conversation-action-btn danger";
+    deleteBtn.textContent = "Delete";
+    deleteBtn.addEventListener("click", () => {
+      openDeleteDialog(conversation.id, conversation.title);
+    });
+
+    actions.append(renameBtn, deleteBtn);
+    item.append(selectBtn, actions);
+    conversationList.appendChild(item);
+  }
+}
+
+async function refreshConversationList(): Promise<void> {
+  try {
+    const response = await fetch("/api/conversations");
+    if (!response.ok) {
+      throw new Error(`Failed to load conversations (${response.status})`);
+    }
+
+    conversations = (await response.json()) as ConversationSummary[];
+    const activeConversation = getConversationSummary(currentConversationId);
+
+    if (
+      !activeConversation &&
+      currentConversationId &&
+      !pendingDeletes.has(currentConversationId)
+    ) {
+      currentConversationId = null;
+      currentConversationTitle = DEFAULT_CONVERSATION_TITLE;
+      renderDraftConversation();
+    }
+
+    renderConversationList();
+    updateConversationHeader();
+  } catch (err) {
+    log.error("Failed to load conversation list:", err);
+    showToast("Failed to load conversations.", { duration: 3200 });
+  }
+}
+
+async function renameConversation(id: string, title: string): Promise<void> {
+  const trimmedTitle = title.trim();
+  if (!trimmedTitle) {
+    showToast("Title cannot be empty.", { duration: 2600 });
+    return;
+  }
+
+  const current = getConversationSummary(id);
+  if (current && current.title === trimmedTitle) {
+    renameConversationId = null;
+    renderConversationList();
+    return;
+  }
+
+  try {
+    const response = await fetch(
+      `/api/conversations/${encodeURIComponent(id)}`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: trimmedTitle })
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error(`Failed to rename conversation (${response.status})`);
+    }
+
+    renameConversationId = null;
+    if (currentConversationId === id) {
+      currentConversationTitle = trimmedTitle;
+    }
+    await refreshConversationList();
+    showToast("Conversation renamed.", { duration: 2200 });
+  } catch (err) {
+    log.error("Failed to rename conversation:", err);
+    showToast("Failed to rename conversation.", { duration: 3200 });
+  }
+}
+
+async function deleteConversation(id: string): Promise<void> {
+  const response = await fetch(`/api/conversations/${encodeURIComponent(id)}`, {
+    method: "DELETE"
+  });
+
+  if (!response.ok && response.status !== 404) {
+    throw new Error(`Failed to delete conversation (${response.status})`);
+  }
+}
+
+async function finalizeSoftDelete(id: string): Promise<void> {
+  const pending = pendingDeletes.get(id);
+  if (!pending) return;
+
+  pendingDeletes.delete(id);
+  if (undoConversationId === id) {
+    undoConversationId = null;
+  }
+
+  try {
+    await deleteConversation(id);
+    await refreshConversationList();
+    showToast(`Deleted "${pending.title}".`, { duration: 2200 });
+  } catch (err) {
+    log.error("Failed to delete conversation:", err);
+    await refreshConversationList();
+    showToast("Failed to delete conversation.", { duration: 3200 });
+  }
+}
+
+async function undoSoftDelete(): Promise<void> {
+  const id = undoConversationId;
+  if (!id) return;
+
+  const pending = pendingDeletes.get(id);
+  if (!pending) return;
+
+  window.clearTimeout(pending.timer);
+  pendingDeletes.delete(id);
+  undoConversationId = null;
+  hideToast();
+  renderConversationList();
+  updateConversationSelectionState();
+  showToast(`Restored "${pending.title}".`, { duration: 2200 });
+}
+
+async function scheduleSoftDelete(id: string, title: string): Promise<void> {
+  if (pendingDeletes.has(id)) return;
+
+  const timer = window.setTimeout(() => {
+    void finalizeSoftDelete(id);
+  }, SOFT_DELETE_WINDOW_MS);
+
+  pendingDeletes.set(id, { title, timer });
+  undoConversationId = id;
+
+  if (currentConversationId === id) {
+    currentConversationId = null;
+    currentConversationTitle = DEFAULT_CONVERSATION_TITLE;
+    renderDraftConversation();
+  }
+
+  renderConversationList();
+  updateConversationHeader();
+  showToast(`Deleting "${title}"`, {
+    undo: true,
+    duration: SOFT_DELETE_WINDOW_MS,
+    countdownSeconds: SOFT_DELETE_WINDOW_MS / 1000,
+    countdownFormatter: seconds => `Deleting "${title}" in ${seconds}s`
+  });
+}
+
+async function renderConversationEvents(
+  events: ConversationEvent[]
+): Promise<void> {
+  clearMessages();
+
+  if (events.length === 0) {
+    renderEmptyConversation();
+    return;
+  }
+
+  const pendingToolInputs = new Map<string, Array<Record<string, unknown>>>();
+
+  for (const event of events) {
+    if (event.type === "user_message") {
+      const text = getStringValue(event.content.text);
+      if (text) {
+        appendUserMessage(text);
+      }
+      continue;
+    }
+
+    if (event.type === "assistant_message") {
+      const text = getStringValue(event.content.text);
+      if (text) {
+        appendAssistantMessage(text);
+      }
+      continue;
+    }
+
+    if (event.type === "tool_call") {
+      const name = getStringValue(event.content.name, "tool");
+      appendToolCallMessage(name);
+      const inputs = pendingToolInputs.get(name) ?? [];
+      inputs.push(getObjectValue(event.content.input));
+      pendingToolInputs.set(name, inputs);
+      continue;
+    }
+
+    if (event.type === "tool_result") {
+      const name = getStringValue(event.content.name, "tool");
+      const result = getStringValue(event.content.result, "No result.");
+      const hasApp = Boolean(event.content.hasApp);
+      appendToolResultMessage(name, result, !hasApp);
+
+      if (hasApp) {
+        const inputs = pendingToolInputs.get(name) ?? [];
+        const toolInput = inputs.shift() ?? {};
+        if (inputs.length === 0) {
+          pendingToolInputs.delete(name);
+        } else {
+          pendingToolInputs.set(name, inputs);
+        }
+
+        const toolCallInfo = buildToolCallInfo(name, toolInput, result);
+        if (toolCallInfo) {
+          await appendAppIframe(toolCallInfo);
+        }
+      }
+    }
+  }
+}
+
+async function loadConversation(id: string): Promise<void> {
+  try {
+    const response = await fetch(
+      `/api/conversations/${encodeURIComponent(id)}`
+    );
+    if (response.status === 404) {
+      await refreshConversationList();
+      showToast("Conversation no longer exists.", { duration: 2600 });
+      return;
+    }
+
+    if (!response.ok) {
+      throw new Error(`Failed to load conversation (${response.status})`);
+    }
+
+    const payload = (await response.json()) as ConversationPayload;
+    currentConversationId = payload.conversation.id;
+    currentConversationTitle = payload.conversation.title;
+    renameConversationId = null;
+    updateConversationHeader();
+    renderConversationList();
+    await renderConversationEvents(payload.events);
+    closeSidebar();
+    input.focus();
+  } catch (err) {
+    log.error("Failed to load conversation:", err);
+    showToast("Failed to load conversation.", { duration: 3200 });
+  }
+}
+
+async function createConversation(): Promise<void> {
+  try {
+    const response = await fetch("/api/conversations", { method: "POST" });
+    if (!response.ok) {
+      throw new Error(`Failed to create conversation (${response.status})`);
+    }
+
+    const record = (await response.json()) as ConversationRecord;
+    currentConversationId = record.id;
+    currentConversationTitle = record.title;
+    renameConversationId = null;
+    renderEmptyConversation();
+    await refreshConversationList();
+    closeSidebar();
+    input.focus();
+  } catch (err) {
+    log.error("Failed to create conversation:", err);
+    showToast("Failed to create conversation.", { duration: 3200 });
+  }
+}
 
 /** Connect browser-side to all MCP servers for App resource access. */
 async function initMcpConnections(): Promise<void> {
@@ -83,7 +751,6 @@ function buildToolCallInfo(
   const resourceUri = getToolUiResourceUri(tool);
   if (!resourceUri) return null;
 
-  // Construct a resolved CallToolResult from the SSE result text
   const callToolResult: CallToolResult = {
     content: [{ type: "text", text: resultText }]
   };
@@ -95,7 +762,6 @@ function buildToolCallInfo(
     resultPromise: Promise.resolve(callToolResult)
   };
 
-  // Fetch the UI resource for the iframe
   info.appResourcePromise = (async () => {
     const resource = await server.client.readResource({ uri: resourceUri });
     const content = resource.contents[0];
@@ -106,17 +772,6 @@ function buildToolCallInfo(
   return info;
 }
 
-function setInputEnabled(enabled: boolean): void {
-  input.disabled = !enabled;
-  sendBtn.disabled = !enabled;
-  if (enabled) input.focus();
-}
-
-/**
- * Parse SSE lines from a text chunk.
- * Each event is `data: <json>\n\n`.
- * Handles partial lines that may span chunks via the buffer.
- */
 function parseSSEEvents(
   chunk: string,
   buffer: string
@@ -124,32 +779,54 @@ function parseSSEEvents(
   const combined = buffer + chunk;
   const events: ChatEvent[] = [];
   const lines = combined.split("\n");
-
-  // Last element may be an incomplete line
   const remaining = lines.pop() ?? "";
 
   for (const line of lines) {
     const trimmed = line.trim();
-    if (!trimmed?.startsWith("data: ")) continue;
+    if (!trimmed.startsWith("data: ")) continue;
+
     try {
       events.push(JSON.parse(trimmed.slice(6)));
     } catch {
-      // Skip malformed lines
+      // Ignore malformed lines.
     }
   }
 
   return { events, remaining };
 }
 
+function primeConversationSummary(conversationId: string): void {
+  if (conversations.some(conversation => conversation.id === conversationId)) {
+    return;
+  }
+
+  const now = new Date().toISOString();
+  conversations = [
+    {
+      id: conversationId,
+      title: currentConversationTitle,
+      createdAt: now,
+      updatedAt: now
+    },
+    ...conversations
+  ];
+  renderConversationList();
+  updateConversationHeader();
+}
+
 async function sendMessage(text: string): Promise<void> {
   setInputEnabled(false);
+  const shouldDeriveTitle =
+    currentConversationTitle === DEFAULT_CONVERSATION_TITLE;
+  if (shouldDeriveTitle) {
+    applyLocalConversationTitle(deriveConversationTitle(text));
+  }
   appendUserMessage(text);
 
-  // Create the assistant bubble immediately so the CSS "Thinking…" placeholder
-  // shows during the skill-load round-trip and any other server-side delay.
   let currentAssistantEl: HTMLDivElement | null = appendAssistantMessage("");
   let currentAssistantText = "";
   let hasAnyAssistantText = false;
+  const pendingToolCalls = new Map<string, ToolCallEvent[]>();
 
   const ensureAssistantBubble = (): HTMLDivElement => {
     if (!currentAssistantEl) {
@@ -183,7 +860,7 @@ async function sendMessage(text: string): Promise<void> {
   };
 
   try {
-    const res = await fetch("/api/chat", {
+    const response = await fetch("/api/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -192,12 +869,12 @@ async function sendMessage(text: string): Promise<void> {
       })
     });
 
-    if (!res.ok) {
-      setAssistantMessage(`Error: ${res.status} ${res.statusText}`);
+    if (!response.ok) {
+      setAssistantMessage(`Error: ${response.status} ${response.statusText}`);
       return;
     }
 
-    const reader = res.body?.getReader();
+    const reader = response.body?.getReader();
     if (!reader) {
       setAssistantMessage("Error: No response stream");
       return;
@@ -205,8 +882,6 @@ async function sendMessage(text: string): Promise<void> {
 
     const decoder = new TextDecoder();
     let sseBuffer = "";
-    // Track pending tool calls so we can pair them with results
-    const pendingToolCalls = new Map<string, ToolCallEvent>();
 
     while (true) {
       const { done, value } = await reader.read();
@@ -220,6 +895,7 @@ async function sendMessage(text: string): Promise<void> {
         switch (event.type) {
           case "conversation_id":
             currentConversationId = event.conversationId;
+            primeConversationSummary(event.conversationId);
             break;
           case "text":
             hideResponseSynthesisIndicator();
@@ -228,30 +904,27 @@ async function sendMessage(text: string): Promise<void> {
           case "tool_call":
             hideResponseSynthesisIndicator();
             appendToolCallMessage(event.name);
-            pendingToolCalls.set(event.name, event);
-            // Any assistant text after tool activity should appear
-            // in a fresh bubble below the tool status pills.
+            queuePendingToolCall(pendingToolCalls, event);
             startNewAssistantBubble();
             break;
           case "tool_result": {
-            // compact = no result preview for text-only tools (agent presents the answer)
             appendToolResultMessage(event.name, event.result, !event.hasApp);
-            // Render MCP App iframe if the tool has a UI
             if (event.hasApp) {
-              const pending = pendingToolCalls.get(event.name);
-              const toolInput = pending?.input ?? {};
+              const pendingToolCall = dequeuePendingToolCall(
+                pendingToolCalls,
+                event.name
+              );
               const toolCallInfo = buildToolCallInfo(
                 event.name,
-                toolInput,
+                pendingToolCall?.input ?? {},
                 event.result
               );
               if (toolCallInfo) {
-                appendAppIframe(toolCallInfo).catch(err =>
-                  log.error("Failed to render App iframe:", err)
-                );
+                appendAppIframe(toolCallInfo).catch(err => {
+                  log.error("Failed to render App iframe:", err);
+                });
               }
             }
-            pendingToolCalls.delete(event.name);
             showResponseSynthesisIndicator();
             break;
           }
@@ -262,8 +935,6 @@ async function sendMessage(text: string): Promise<void> {
             break;
           case "skill_load":
             hideResponseSynthesisIndicator();
-            // A skill-load is a turn boundary: any text that follows comes
-            // from a new Claude turn, so it should appear in a fresh bubble.
             startNewAssistantBubble();
             showSkillLoadingIndicator(event.skillName);
             break;
@@ -273,12 +944,12 @@ async function sendMessage(text: string): Promise<void> {
           case "done":
             hideResponseSynthesisIndicator();
             hideSkillLoadingIndicator();
+            await refreshConversationList();
             break;
         }
       }
     }
 
-    // If no text was received, show a fallback
     if (!hasAnyAssistantText) {
       setAssistantMessage("No response received.");
     }
@@ -291,16 +962,67 @@ async function sendMessage(text: string): Promise<void> {
   }
 }
 
-form.addEventListener("submit", async e => {
-  e.preventDefault();
+form.addEventListener("submit", async event => {
+  event.preventDefault();
   const text = input.value.trim();
   if (!text) return;
   input.value = "";
   await sendMessage(text);
 });
 
-// Initialize: connect browser-side MCP clients, then enable input
-initMcpConnections().then(() => {
+newConversationBtn.addEventListener("click", async () => {
+  await createConversation();
+});
+
+menuBtn.addEventListener("click", () => {
+  setSidebarOpen(!sidebarOpen);
+});
+
+sidebarOverlay.addEventListener("click", () => {
+  closeSidebar();
+});
+
+deleteCancelBtn.addEventListener("click", () => {
+  closeDeleteDialog();
+});
+
+deleteConfirmBtn.addEventListener("click", async () => {
+  if (!deleteConversationId) return;
+  deleteConfirmBtn.disabled = true;
+  deleteCancelBtn.disabled = true;
+
+  try {
+    await scheduleSoftDelete(deleteConversationId, deleteConversationTitle);
+    closeDeleteDialog();
+  } finally {
+    deleteConfirmBtn.disabled = false;
+    deleteCancelBtn.disabled = false;
+  }
+});
+
+deleteDialog.addEventListener("cancel", event => {
+  event.preventDefault();
+  closeDeleteDialog();
+});
+
+toastUndoBtn.addEventListener("click", () => {
+  void undoSoftDelete();
+});
+
+toastCloseBtn.addEventListener("click", () => {
+  hideToast();
+});
+
+window.addEventListener("resize", () => {
+  if (window.innerWidth >= 960 && sidebarOpen) {
+    closeSidebar();
+  }
+});
+
+renderDraftConversation();
+updateConversationHeader();
+
+Promise.all([initMcpConnections(), refreshConversationList()]).then(() => {
   log.info("Browser MCP connections ready");
   input.focus();
 });

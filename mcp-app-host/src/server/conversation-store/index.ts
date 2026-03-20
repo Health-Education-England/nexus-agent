@@ -9,6 +9,7 @@ export type {
   ConversationEvent,
   ConversationEventType,
   ConversationSummary,
+  ConversationUpdate,
   NewConversationEvent
 } from "./types.js";
 
