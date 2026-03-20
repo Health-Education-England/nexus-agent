@@ -6,7 +6,6 @@
 import type { ChatEvent, ToolCallEvent } from "../shared/chat-events.js";
 import type {
   ConversationEvent,
-  ConversationRecord,
   ConversationSummary
 } from "../server/conversation-store/index.js";
 import {
@@ -30,11 +29,18 @@ import {
 } from "./mcp-bridge.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { getToolUiResourceUri } from "@modelcontextprotocol/ext-apps/app-bridge";
-
-type ConversationPayload = {
-  conversation: ConversationRecord;
-  events: ConversationEvent[];
-};
+import {
+  DEFAULT_CONVERSATION_TITLE,
+  deriveConversationTitle
+} from "../shared/conversation-title.js";
+import {
+  createConversationRecord,
+  deleteConversationRecord,
+  getConversation,
+  listConversations,
+  renameConversationRecord
+} from "./conversation-api.js";
+import { renderConversationListView } from "./conversation-list-view.js";
 
 type PendingDelete = {
   title: string;
@@ -42,8 +48,6 @@ type PendingDelete = {
 };
 
 const SOFT_DELETE_WINDOW_MS = 10000;
-const DEFAULT_CONVERSATION_TITLE = "New conversation";
-const MAX_DERIVED_TITLE_LENGTH = 60;
 const WELCOME_MESSAGE =
   "Hello! Start a new conversation or reopen a saved one from the sidebar.";
 const EMPTY_CONVERSATION_MESSAGE =
@@ -94,7 +98,7 @@ const toolServerMap = new Map<string, ServerInfo>();
 const pendingDeletes = new Map<string, PendingDelete>();
 
 let currentConversationId: string | null = null;
-let currentConversationTitle = "New conversation";
+let currentConversationTitle = DEFAULT_CONVERSATION_TITLE;
 let conversations: ConversationSummary[] = [];
 let renameConversationId: string | null = null;
 let deleteConversationId: string | null = null;
@@ -104,17 +108,6 @@ let undoConversationId: string | null = null;
 let toastTimer: number | null = null;
 let toastCountdownTimer: number | null = null;
 let sidebarOpen = false;
-
-function deriveConversationTitle(text: string): string {
-  const normalized = text.replaceAll(/\s+/g, " ").trim();
-  if (!normalized) return DEFAULT_CONVERSATION_TITLE;
-
-  if (normalized.length <= MAX_DERIVED_TITLE_LENGTH) {
-    return normalized;
-  }
-
-  return `${normalized.slice(0, MAX_DERIVED_TITLE_LENGTH).trimEnd()}...`;
-}
 
 function getConversationSummary(id: string | null): ConversationSummary | null {
   if (!id) return null;
@@ -196,11 +189,11 @@ function updateConversationHeader(): void {
 
 function clearToastTimers(): void {
   if (toastTimer !== null) {
-    window.clearTimeout(toastTimer);
+    globalThis.clearTimeout(toastTimer);
     toastTimer = null;
   }
   if (toastCountdownTimer !== null) {
-    window.clearInterval(toastCountdownTimer);
+    globalThis.clearInterval(toastCountdownTimer);
     toastCountdownTimer = null;
   }
 }
@@ -239,7 +232,7 @@ function showToast(
       remaining -= 1;
       if (remaining <= 0) {
         if (toastCountdownTimer !== null) {
-          window.clearInterval(toastCountdownTimer);
+          globalThis.clearInterval(toastCountdownTimer);
           toastCountdownTimer = null;
         }
         return;
@@ -316,150 +309,48 @@ function closeDeleteDialog(): void {
   lastFocusedDialogTarget = null;
 }
 
-function updateConversationSelectionState(): void {
-  for (const item of conversationList.querySelectorAll<HTMLElement>(
-    ".conversation-item"
-  )) {
-    item.classList.toggle("active", item.dataset.id === currentConversationId);
-  }
-}
-
 function renderConversationList(): void {
-  const visibleConversations = conversations.filter(
-    conversation => !pendingDeletes.has(conversation.id)
-  );
-
-  conversationList.innerHTML = "";
-
-  if (visibleConversations.length === 0) {
-    const emptyItem = document.createElement("li");
-    emptyItem.className = "conversation-empty";
-    emptyItem.textContent = "No saved conversations yet.";
-    conversationList.appendChild(emptyItem);
-    return;
-  }
-
-  for (const conversation of visibleConversations) {
-    const item = document.createElement("li");
-    item.className = "conversation-item";
-    item.dataset.id = conversation.id;
-
-    if (renameConversationId === conversation.id) {
-      item.classList.add("editing");
-
-      const formEl = document.createElement("form");
-      formEl.className = "conversation-rename-form";
-
-      const inputEl = document.createElement("input");
-      inputEl.className = "conversation-rename-input";
-      inputEl.type = "text";
-      inputEl.maxLength = 120;
-      inputEl.value = conversation.title;
-      inputEl.setAttribute("aria-label", "Conversation title");
-
-      const actionRow = document.createElement("div");
-      actionRow.className = "conversation-rename-actions";
-
-      const saveBtn = document.createElement("button");
-      saveBtn.type = "submit";
-      saveBtn.className = "conversation-inline-btn primary";
-      saveBtn.textContent = "Save";
-
-      const cancelBtn = document.createElement("button");
-      cancelBtn.type = "button";
-      cancelBtn.className = "conversation-inline-btn";
-      cancelBtn.textContent = "Cancel";
-
-      cancelBtn.addEventListener("click", () => {
+  renderConversationListView(
+    {
+      listElement: conversationList,
+      conversations,
+      currentConversationId,
+      renameConversationId,
+      hiddenConversationIds: new Set(pendingDeletes.keys()),
+      formatMeta: formatRelativeDate
+    },
+    {
+      onSelect: conversationId => {
+        void loadConversation(conversationId);
+      },
+      onStartRename: conversationId => {
+        renameConversationId = conversationId;
+        renderConversationList();
+        requestAnimationFrame(() => {
+          const renameInput = conversationList.querySelector<HTMLInputElement>(
+            ".conversation-rename-input"
+          );
+          renameInput?.focus();
+          renameInput?.select();
+        });
+      },
+      onDelete: (conversationId, title) => {
+        openDeleteDialog(conversationId, title);
+      },
+      onSubmitRename: (conversationId, title) => {
+        void renameConversation(conversationId, title);
+      },
+      onCancelRename: () => {
         renameConversationId = null;
         renderConversationList();
-      });
-
-      formEl.addEventListener("submit", async event => {
-        event.preventDefault();
-        await renameConversation(conversation.id, inputEl.value);
-      });
-
-      inputEl.addEventListener("keydown", event => {
-        if (event.key === "Escape") {
-          renameConversationId = null;
-          renderConversationList();
-        }
-      });
-
-      actionRow.append(saveBtn, cancelBtn);
-      formEl.append(inputEl, actionRow);
-      item.appendChild(formEl);
-      conversationList.appendChild(item);
-      continue;
+      }
     }
-
-    if (conversation.id === currentConversationId) {
-      item.classList.add("active");
-    }
-
-    const selectBtn = document.createElement("button");
-    selectBtn.type = "button";
-    selectBtn.className = "conversation-select";
-    selectBtn.setAttribute(
-      "aria-label",
-      `Load conversation ${conversation.title}`
-    );
-
-    const titleEl = document.createElement("span");
-    titleEl.className = "conversation-title";
-    titleEl.textContent = conversation.title;
-
-    const metaEl = document.createElement("span");
-    metaEl.className = "conversation-meta";
-    metaEl.textContent = `Updated ${formatRelativeDate(conversation.updatedAt)}`;
-
-    selectBtn.append(titleEl, metaEl);
-    selectBtn.addEventListener("click", async () => {
-      await loadConversation(conversation.id);
-    });
-
-    const actions = document.createElement("div");
-    actions.className = "conversation-actions";
-
-    const renameBtn = document.createElement("button");
-    renameBtn.type = "button";
-    renameBtn.className = "conversation-action-btn";
-    renameBtn.textContent = "Rename";
-    renameBtn.addEventListener("click", () => {
-      renameConversationId = conversation.id;
-      renderConversationList();
-      requestAnimationFrame(() => {
-        const renameInput = conversationList.querySelector<HTMLInputElement>(
-          ".conversation-rename-input"
-        );
-        renameInput?.focus();
-        renameInput?.select();
-      });
-    });
-
-    const deleteBtn = document.createElement("button");
-    deleteBtn.type = "button";
-    deleteBtn.className = "conversation-action-btn danger";
-    deleteBtn.textContent = "Delete";
-    deleteBtn.addEventListener("click", () => {
-      openDeleteDialog(conversation.id, conversation.title);
-    });
-
-    actions.append(renameBtn, deleteBtn);
-    item.append(selectBtn, actions);
-    conversationList.appendChild(item);
-  }
+  );
 }
 
 async function refreshConversationList(): Promise<void> {
   try {
-    const response = await fetch("/api/conversations");
-    if (!response.ok) {
-      throw new Error(`Failed to load conversations (${response.status})`);
-    }
-
-    conversations = (await response.json()) as ConversationSummary[];
+    conversations = await listConversations();
     const activeConversation = getConversationSummary(currentConversationId);
 
     if (
@@ -488,25 +379,14 @@ async function renameConversation(id: string, title: string): Promise<void> {
   }
 
   const current = getConversationSummary(id);
-  if (current && current.title === trimmedTitle) {
+  if (current?.title === trimmedTitle) {
     renameConversationId = null;
     renderConversationList();
     return;
   }
 
   try {
-    const response = await fetch(
-      `/api/conversations/${encodeURIComponent(id)}`,
-      {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: trimmedTitle })
-      }
-    );
-
-    if (!response.ok) {
-      throw new Error(`Failed to rename conversation (${response.status})`);
-    }
+    await renameConversationRecord(id, trimmedTitle);
 
     renameConversationId = null;
     if (currentConversationId === id) {
@@ -521,13 +401,7 @@ async function renameConversation(id: string, title: string): Promise<void> {
 }
 
 async function deleteConversation(id: string): Promise<void> {
-  const response = await fetch(`/api/conversations/${encodeURIComponent(id)}`, {
-    method: "DELETE"
-  });
-
-  if (!response.ok && response.status !== 404) {
-    throw new Error(`Failed to delete conversation (${response.status})`);
-  }
+  await deleteConversationRecord(id);
 }
 
 async function finalizeSoftDelete(id: string): Promise<void> {
@@ -557,17 +431,21 @@ async function undoSoftDelete(): Promise<void> {
   const pending = pendingDeletes.get(id);
   if (!pending) return;
 
-  window.clearTimeout(pending.timer);
+  globalThis.clearTimeout(pending.timer);
   pendingDeletes.delete(id);
   undoConversationId = null;
   hideToast();
   renderConversationList();
-  updateConversationSelectionState();
   showToast(`Restored "${pending.title}".`, { duration: 2200 });
 }
 
 async function scheduleSoftDelete(id: string, title: string): Promise<void> {
   if (pendingDeletes.has(id)) return;
+
+  if (undoConversationId && undoConversationId !== id) {
+    showToast("Finish or undo the current delete first.", { duration: 2600 });
+    return;
+  }
 
   const timer = window.setTimeout(() => {
     void finalizeSoftDelete(id);
@@ -656,20 +534,13 @@ async function renderConversationEvents(
 
 async function loadConversation(id: string): Promise<void> {
   try {
-    const response = await fetch(
-      `/api/conversations/${encodeURIComponent(id)}`
-    );
-    if (response.status === 404) {
+    const payload = await getConversation(id);
+    if (!payload) {
       await refreshConversationList();
       showToast("Conversation no longer exists.", { duration: 2600 });
       return;
     }
 
-    if (!response.ok) {
-      throw new Error(`Failed to load conversation (${response.status})`);
-    }
-
-    const payload = (await response.json()) as ConversationPayload;
     currentConversationId = payload.conversation.id;
     currentConversationTitle = payload.conversation.title;
     renameConversationId = null;
@@ -686,12 +557,7 @@ async function loadConversation(id: string): Promise<void> {
 
 async function createConversation(): Promise<void> {
   try {
-    const response = await fetch("/api/conversations", { method: "POST" });
-    if (!response.ok) {
-      throw new Error(`Failed to create conversation (${response.status})`);
-    }
-
-    const record = (await response.json()) as ConversationRecord;
+    const record = await createConversationRecord();
     currentConversationId = record.id;
     currentConversationTitle = record.title;
     renameConversationId = null;
@@ -1022,7 +888,14 @@ window.addEventListener("resize", () => {
 renderDraftConversation();
 updateConversationHeader();
 
-Promise.all([initMcpConnections(), refreshConversationList()]).then(() => {
-  log.info("Browser MCP connections ready");
-  input.focus();
-});
+async function initializeHostUi(): Promise<void> {
+  try {
+    await Promise.all([initMcpConnections(), refreshConversationList()]);
+    log.info("Browser MCP connections ready");
+    input.focus();
+  } catch (err) {
+    log.error("Failed to initialize host UI:", err);
+  }
+}
+
+void initializeHostUi();

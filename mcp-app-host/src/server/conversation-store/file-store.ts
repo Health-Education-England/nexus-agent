@@ -8,6 +8,10 @@
 
 import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import {
+  DEFAULT_CONVERSATION_TITLE,
+  deriveConversationTitle
+} from "../../shared/conversation-title.js";
 import type {
   ConversationEvent,
   ConversationRecord,
@@ -23,26 +27,12 @@ type PersistedConversation = {
   nextSeq: number;
 };
 
-const DEFAULT_CONVERSATION_TITLE = "New conversation";
-const MAX_DERIVED_TITLE_LENGTH = 60;
-
 function makeId(): string {
   return crypto.randomUUID();
 }
 
 function sanitizeFileName(id: string): string {
   return id.replaceAll(/[^a-zA-Z0-9_-]/g, "_");
-}
-
-function deriveConversationTitle(text: string): string {
-  const normalized = text.replaceAll(/\s+/g, " ").trim();
-  if (!normalized) return DEFAULT_CONVERSATION_TITLE;
-
-  if (normalized.length <= MAX_DERIVED_TITLE_LENGTH) {
-    return normalized;
-  }
-
-  return `${normalized.slice(0, MAX_DERIVED_TITLE_LENGTH).trimEnd()}...`;
 }
 
 function getFirstUserMessageText(

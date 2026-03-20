@@ -107,6 +107,11 @@ hostApp.post("/api/conversations", async (_req, res) => {
 /** Update a conversation title or metadata. */
 hostApp.patch("/api/conversations/:id", async (req, res) => {
   const { title, model, metadata } = req.body ?? {};
+  const updates: {
+    title?: string;
+    model?: string;
+    metadata?: Record<string, unknown>;
+  } = {};
 
   if (title === undefined && model === undefined && metadata === undefined) {
     res.status(400).json({ error: "No supported fields provided" });
@@ -117,10 +122,16 @@ hostApp.patch("/api/conversations/:id", async (req, res) => {
     res.status(400).json({ error: "title must be a string" });
     return;
   }
+  if (title !== undefined) {
+    updates.title = title;
+  }
 
   if (model !== undefined && typeof model !== "string") {
     res.status(400).json({ error: "model must be a string" });
     return;
+  }
+  if (model !== undefined) {
+    updates.model = model;
   }
 
   if (
@@ -132,12 +143,11 @@ hostApp.patch("/api/conversations/:id", async (req, res) => {
     res.status(400).json({ error: "metadata must be an object" });
     return;
   }
+  if (metadata !== undefined) {
+    updates.metadata = metadata as Record<string, unknown>;
+  }
 
-  const record = await conversationStore.update(req.params.id, {
-    title,
-    model,
-    metadata
-  });
+  const record = await conversationStore.update(req.params.id, updates);
 
   if (!record) {
     res.status(404).json({ error: "Conversation not found" });
