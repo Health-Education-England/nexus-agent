@@ -92,18 +92,25 @@ form.addEventListener("submit", async e => {
   submitBtn.textContent = SUBMIT_BUSY_TEXT;
 
   try {
-    const args: Record<string, unknown> = {
+    const persistedInput: Record<string, unknown> = {
       current_cct_date: data.get("current_cct_date") as string,
       current_work_percentage: Number.parseFloat(
         data.get("current_work_percentage") as string
       ),
       proposed_work_percentage: Number.parseFloat(proposedWte),
-      proposed_start_date: data.get("proposed_start_date") as string,
+      proposed_start_date: data.get("proposed_start_date") as string
+    };
+
+    const args: Record<string, unknown> = {
+      ...persistedInput,
       _submitted_from_form: true
     };
 
     const programme = (data.get("programme_name") as string).trim();
-    if (programme) args.programme_name = programme;
+    if (programme) {
+      persistedInput.programme_name = programme;
+      args.programme_name = programme;
+    }
 
     // Call the server-side tool via the App bridge
     const result = await app.callServerTool({
@@ -113,11 +120,30 @@ form.addEventListener("submit", async e => {
 
     if (result.isError) {
       const msg = extractTextContent(result.content as ToolTextBlock[]);
+      await app.updateModelContext({
+        structuredContent: {
+          persistenceKind: "form-state",
+          persistedInput,
+          persistedToolResultText: msg || "Calculation failed.",
+          persistedToolResultIsError: true
+        }
+      });
       showError(msg || "Calculation failed.");
       return;
     }
 
     const parsed = parseToolResult(result.content as ToolTextBlock[]);
+    await app.updateModelContext({
+      structuredContent: {
+        persistenceKind: "form-state",
+        persistedInput,
+        persistedToolResultText: extractTextContent(
+          result.content as ToolTextBlock[]
+        ),
+        persistedToolResultIsError: false
+      }
+    });
+
     if (parsed) {
       showResult(parsed);
     }
@@ -138,8 +164,33 @@ function setFormValue(name: string, value: unknown): void {
     | HTMLSelectElement
     | null;
   if (!el) return;
-  if (typeof value === "string") el.value = value;
-  else if (typeof value === "number") el.value = value.toString();
+
+  const rawValue = typeof value === "number" ? value.toString() : String(value);
+
+  if (el instanceof HTMLSelectElement) {
+    const exactMatch = Array.from(el.options).find(
+      option => option.value === rawValue
+    );
+    if (exactMatch) {
+      el.value = exactMatch.value;
+      return;
+    }
+
+    const numericValue = Number(rawValue);
+    if (Number.isFinite(numericValue)) {
+      const numericMatch = Array.from(el.options).find(option => {
+        const optionValue = Number(option.value);
+        return Number.isFinite(optionValue) && optionValue === numericValue;
+      });
+
+      if (numericMatch) {
+        el.value = numericMatch.value;
+        return;
+      }
+    }
+  }
+
+  el.value = rawValue;
 }
 
 function showError(msg: string): void {

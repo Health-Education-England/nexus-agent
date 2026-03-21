@@ -21,7 +21,9 @@ const pendingToolRows: HTMLDivElement[] = [];
 /** Persistent skill-loading chip (replaced/removed on skill_ready). */
 let skillLoadingChip: HTMLDivElement | null = null;
 let skillLoadingShownAt = 0;
-let pendingHideSkillChipTimeout: number | null = null;
+let pendingHideSkillChipTimeout: ReturnType<
+  typeof globalThis.setTimeout
+> | null = null;
 const SKILL_LOADING_MIN_VISIBLE_MS = 1000;
 let responseSynthesisChip: HTMLDivElement | null = null;
 const MAX_APP_RENDER_RETRIES = 3;
@@ -186,7 +188,10 @@ export async function appendAppIframe(
 
     if (firstTime) {
       const appBridge = newAppBridge(toolCallInfo.serverInfo, iframe, {
-        onContextUpdate: ctx => log.info("Context update:", ctx),
+        onContextUpdate: ctx => {
+          log.info("Context update:", ctx);
+          toolCallInfo.onContextUpdate?.(ctx);
+        },
         onMessage: msg => log.info("App message:", msg)
       });
 
@@ -224,7 +229,7 @@ export async function appendAppIframe(
       }
 
       action.textContent = "Refreshing…";
-      window.location.reload();
+      globalThis.location.reload();
     });
     fallback.appendChild(action);
 
@@ -268,7 +273,7 @@ export function hideSkillLoadingIndicator(): void {
   if (pendingHideSkillChipTimeout !== null) {
     globalThis.clearTimeout(pendingHideSkillChipTimeout);
   }
-  pendingHideSkillChipTimeout = window.setTimeout(() => {
+  pendingHideSkillChipTimeout = globalThis.setTimeout(() => {
     removeSkillLoadingChip();
   }, remaining);
 }

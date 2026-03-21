@@ -39,13 +39,14 @@ import {
   deleteConversationRecord,
   getConversation,
   listConversations,
+  persistConversationAppContext,
   renameConversationRecord
 } from "./conversation-api.js";
 import { renderConversationListView } from "./conversation-list-view.js";
 
 type PendingDelete = {
   title: string;
-  timer: number;
+  timer: ReturnType<typeof globalThis.setTimeout>;
 };
 
 const SOFT_DELETE_WINDOW_MS = 10000;
@@ -106,8 +107,9 @@ let deleteConversationId: string | null = null;
 let deleteConversationTitle = "";
 let lastFocusedDialogTarget: HTMLElement | null = null;
 let undoConversationId: string | null = null;
-let toastTimer: number | null = null;
-let toastCountdownTimer: number | null = null;
+let toastTimer: ReturnType<typeof globalThis.setTimeout> | null = null;
+let toastCountdownTimer: ReturnType<typeof globalThis.setInterval> | null =
+  null;
 let sidebarOpen = false;
 
 function getConversationSummary(id: string | null): ConversationSummary | null {
@@ -180,12 +182,15 @@ function updateConversationHeader(): void {
   }
 
   activeConversationTitleEl.textContent = currentConversationTitle;
-  activeConversationMetaEl.textContent =
-    currentConversationId !== null
-      ? "Saved conversation"
-      : currentConversationTitle === DEFAULT_CONVERSATION_TITLE
+  if (currentConversationId === null) {
+    activeConversationMetaEl.textContent =
+      currentConversationTitle === DEFAULT_CONVERSATION_TITLE
         ? "Unsaved draft"
         : "Creating conversation";
+    return;
+  }
+
+  activeConversationMetaEl.textContent = "Saved conversation";
 }
 
 function clearToastTimers(): void {
@@ -229,7 +234,7 @@ function showToast(
     const formatter =
       countdownFormatter ?? ((seconds: number) => `${message} (${seconds}s)`);
     toastText.textContent = formatter(remaining);
-    toastCountdownTimer = window.setInterval(() => {
+    toastCountdownTimer = globalThis.setInterval(() => {
       remaining -= 1;
       if (remaining <= 0) {
         if (toastCountdownTimer !== null) {
@@ -244,7 +249,7 @@ function showToast(
 
   toastUndoBtn.hidden = !undo;
   toast.classList.add("open");
-  toastTimer = window.setTimeout(() => {
+  toastTimer = globalThis.setTimeout(() => {
     hideToast();
   }, duration);
 }
@@ -289,6 +294,60 @@ function getObjectValue(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : {};
+}
+
+function getPersistedInputFromContext(
+  context: Record<string, unknown> | null
+): Record<string, unknown> {
+  if (!context) return {};
+
+  const structuredContent = getObjectValue(context.structuredContent);
+  const persistedInput = getObjectValue(structuredContent.persistedInput);
+
+  if (Object.keys(persistedInput).length > 0) {
+    return persistedInput;
+  }
+
+  return {};
+}
+
+function getPersistedToolResultText(
+  context: Record<string, unknown> | null
+): string | null {
+  if (!context) return null;
+
+  const structuredContent = getObjectValue(context.structuredContent);
+  const persistedToolResultText = structuredContent.persistedToolResultText;
+  return typeof persistedToolResultText === "string" && persistedToolResultText
+    ? persistedToolResultText
+    : null;
+}
+
+function getPersistedToolResultIsError(
+  context: Record<string, unknown> | null
+): boolean {
+  if (!context) return false;
+
+  const structuredContent = getObjectValue(context.structuredContent);
+  return structuredContent.persistedToolResultIsError === true;
+}
+
+function collectLatestAppContexts(
+  events: ConversationEvent[]
+): Map<string, Record<string, unknown>> {
+  const latestContexts = new Map<string, Record<string, unknown>>();
+
+  for (const event of events) {
+    if (event.type !== "app_context_update") continue;
+
+    const appInstanceId = getStringValue(event.content.appInstanceId);
+    const context = getObjectValue(event.content.context);
+    if (!appInstanceId || Object.keys(context).length === 0) continue;
+
+    latestContexts.set(appInstanceId, context);
+  }
+
+  return latestContexts;
 }
 
 function openDeleteDialog(id: string, title: string): void {
@@ -448,7 +507,7 @@ async function scheduleSoftDelete(id: string, title: string): Promise<void> {
     return;
   }
 
-  const timer = window.setTimeout(() => {
+  const timer = globalThis.setTimeout(() => {
     void finalizeSoftDelete(id);
   }, SOFT_DELETE_WINDOW_MS);
 
@@ -482,6 +541,7 @@ async function renderConversationEvents(
   }
 
   const pendingToolInputs = new Map<string, Array<Record<string, unknown>>>();
+  const latestAppContexts = collectLatestAppContexts(events);
 
   for (const event of events) {
     if (event.type === "user_message") {
@@ -513,6 +573,7 @@ async function renderConversationEvents(
       const name = getStringValue(event.content.name, "tool");
       const result = getStringValue(event.content.result, "No result.");
       const hasApp = Boolean(event.content.hasApp);
+      const appInstanceId = getStringValue(event.content.appInstanceId);
       appendToolResultMessage(name, result, !hasApp);
 
       if (hasApp) {
@@ -524,11 +585,26 @@ async function renderConversationEvents(
           pendingToolInputs.set(name, inputs);
         }
 
-        const toolCallInfo = buildToolCallInfo(name, toolInput, result);
+        const persistedContext = appInstanceId
+          ? (latestAppContexts.get(appInstanceId) ?? null)
+          : null;
+        const toolCallInfo = buildToolCallInfo(
+          name,
+          toolInput,
+          result,
+          appInstanceId,
+          persistedContext
+        );
         if (toolCallInfo) {
           await appendAppIframe(toolCallInfo);
         }
       }
+
+      continue;
+    }
+
+    if (event.type === "app_context_update") {
+      continue;
     }
   }
 }
@@ -600,7 +676,9 @@ async function initMcpConnections(): Promise<void> {
 function buildToolCallInfo(
   toolName: string,
   toolInput: Record<string, unknown>,
-  resultText: string
+  resultText: string,
+  appInstanceId?: string,
+  persistedContext: Record<string, unknown> | null = null
 ): ToolCallInfo | null {
   const server = toolServerMap.get(toolName);
   if (!server) {
@@ -618,14 +696,39 @@ function buildToolCallInfo(
   const resourceUri = getToolUiResourceUri(tool);
   if (!resourceUri) return null;
 
+  const persistedInput = getPersistedInputFromContext(persistedContext);
+  const replayInput =
+    Object.keys(persistedInput).length > 0
+      ? { ...toolInput, ...persistedInput }
+      : toolInput;
+  const replayResultText =
+    getPersistedToolResultText(persistedContext) ?? resultText;
+  const conversationIdForApp = currentConversationId;
+
   const callToolResult: CallToolResult = {
-    content: [{ type: "text", text: resultText }]
+    content: [{ type: "text", text: replayResultText }],
+    isError: getPersistedToolResultIsError(persistedContext)
   };
 
   const info: ToolCallInfo = {
     serverInfo: server,
     tool,
-    input: toolInput,
+    input: replayInput,
+    appInstanceId,
+    onContextUpdate:
+      conversationIdForApp && appInstanceId
+        ? context => {
+            if (!context) return;
+            void persistConversationAppContext(
+              conversationIdForApp,
+              appInstanceId,
+              toolName,
+              context
+            ).catch(err => {
+              log.error("Failed to persist app context:", err);
+            });
+          }
+        : undefined,
     resultPromise: Promise.resolve(callToolResult)
   };
 
@@ -781,7 +884,8 @@ async function sendMessage(text: string): Promise<void> {
               const toolCallInfo = buildToolCallInfo(
                 event.name,
                 pendingToolCall?.input ?? {},
-                event.result
+                event.result,
+                event.appInstanceId
               );
               if (toolCallInfo) {
                 appendAppIframe(toolCallInfo).catch(err => {

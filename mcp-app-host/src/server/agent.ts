@@ -98,11 +98,12 @@ function appendAssistantToolUses(
 ): void {
   const lastMessage = history.at(-1);
   if (lastMessage?.role === "assistant") {
-    const existingContent = Array.isArray(lastMessage.content)
-      ? [...lastMessage.content]
-      : typeof lastMessage.content === "string"
-        ? [{ type: "text" as const, text: lastMessage.content }]
-        : [];
+    let existingContent: Array<Anthropic.ContentBlockParam> = [];
+    if (Array.isArray(lastMessage.content)) {
+      existingContent = [...lastMessage.content];
+    } else if (typeof lastMessage.content === "string") {
+      existingContent = [{ type: "text" as const, text: lastMessage.content }];
+    }
 
     lastMessage.content = [...existingContent, ...toolUses];
     return;
@@ -185,9 +186,9 @@ async function hydrateSessionIfNeeded(
         } else {
           const name = getToolName(currentEvent.content);
           const matchedIndex =
-            name !== null
-              ? pendingToolUses.findIndex(toolUse => toolUse.name === name)
-              : -1;
+            name === null
+              ? -1
+              : pendingToolUses.findIndex(toolUse => toolUse.name === name);
           const matchedToolUse =
             matchedIndex >= 0
               ? pendingToolUses.splice(matchedIndex, 1)[0]
@@ -458,6 +459,7 @@ export async function handleChat(req: Request, res: Response): Promise<void> {
         try {
           let result: Awaited<ReturnType<typeof executeTool>>["result"];
           let hasApp = false;
+          let appInstanceId: string | undefined;
           let resourceUri: string | undefined;
 
           const localTool = getLocalToolByName(toolUse.name);
@@ -472,6 +474,7 @@ export async function handleChat(req: Request, res: Response): Promise<void> {
             );
             result = execResult.result;
             hasApp = execResult.hasApp;
+            appInstanceId = hasApp ? crypto.randomUUID() : undefined;
             resourceUri = execResult.resourceUri;
           }
 
@@ -495,6 +498,7 @@ export async function handleChat(req: Request, res: Response): Promise<void> {
               name: toolUse.name,
               result: resultText,
               hasApp,
+              appInstanceId,
               resourceUri
             });
             pendingEvents.push({
@@ -504,6 +508,7 @@ export async function handleChat(req: Request, res: Response): Promise<void> {
                 name: toolUse.name,
                 result: resultText,
                 hasApp,
+                appInstanceId,
                 resourceUri,
                 isError: false
               }

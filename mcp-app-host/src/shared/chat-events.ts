@@ -28,6 +28,7 @@ export type ToolResultEvent = {
   name: string;
   result: string;
   hasApp: boolean;
+  appInstanceId?: string;
   resourceUri?: string;
 };
 

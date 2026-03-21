@@ -127,6 +127,8 @@ export interface ToolCallInfo {
   serverInfo: ServerInfo;
   tool: Tool;
   input: Record<string, unknown>;
+  appInstanceId?: string;
+  onContextUpdate?: (context: ModelContext | null) => void;
   resultPromise: Promise<CallToolResult>;
   appResourcePromise?: Promise<UiResourceData>;
 }
@@ -425,7 +427,7 @@ const HOST_STYLE_VARIABLES = {
 } satisfies Record<string, string>;
 
 function getTheme(): "light" | "dark" {
-  return window.matchMedia("(prefers-color-scheme: dark)").matches
+  return globalThis.matchMedia("(prefers-color-scheme: dark)").matches
     ? "dark"
     : "light";
 }
@@ -463,7 +465,7 @@ export function newAppBridge(
   );
 
   // Listen for system theme changes
-  window
+  globalThis
     .matchMedia("(prefers-color-scheme: dark)")
     .addEventListener("change", e => {
       const newTheme = e.matches ? "dark" : "light";
@@ -498,23 +500,23 @@ export function newAppBridge(
     return {};
   };
 
-  appBridge.onsizechange = async ({ width, height }) => {
+  appBridge.onsizechange = ({ width, height }) => {
     const style = getComputedStyle(iframe);
     const isBorderBox = style.boxSizing === "border-box";
 
     if (width !== undefined) {
       if (isBorderBox) {
         width +=
-          parseFloat(style.borderLeftWidth) +
-          parseFloat(style.borderRightWidth);
+          Number.parseFloat(style.borderLeftWidth) +
+          Number.parseFloat(style.borderRightWidth);
       }
       iframe.style.minWidth = `min(${width}px, 100%)`;
     }
     if (height !== undefined) {
       if (isBorderBox) {
         height +=
-          parseFloat(style.borderTopWidth) +
-          parseFloat(style.borderBottomWidth);
+          Number.parseFloat(style.borderTopWidth) +
+          Number.parseFloat(style.borderBottomWidth);
       }
       iframe.style.height = `${height}px`;
     }

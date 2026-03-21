@@ -157,6 +157,50 @@ hostApp.patch("/api/conversations/:id", async (req, res) => {
   res.json(record);
 });
 
+/** Persist app-originated model context updates for a conversation. */
+hostApp.post("/api/conversations/:id/app-context", async (req, res) => {
+  const { appInstanceId, toolName, context } = req.body ?? {};
+
+  if (typeof appInstanceId !== "string" || appInstanceId.trim().length === 0) {
+    res.status(400).json({ error: "appInstanceId must be a non-empty string" });
+    return;
+  }
+
+  if (typeof toolName !== "string" || toolName.trim().length === 0) {
+    res.status(400).json({ error: "toolName must be a non-empty string" });
+    return;
+  }
+
+  if (
+    context === null ||
+    typeof context !== "object" ||
+    Array.isArray(context)
+  ) {
+    res.status(400).json({ error: "context must be an object" });
+    return;
+  }
+
+  const record = await conversationStore.get(req.params.id);
+  if (!record) {
+    res.status(404).json({ error: "Conversation not found" });
+    return;
+  }
+
+  await conversationStore.appendEvents(req.params.id, [
+    {
+      type: "app_context_update",
+      role: "assistant",
+      content: {
+        appInstanceId,
+        toolName,
+        context
+      }
+    }
+  ]);
+
+  res.status(204).end();
+});
+
 /** Delete a conversation. */
 hostApp.delete("/api/conversations/:id", async (req, res) => {
   const deleted = await conversationStore.delete(req.params.id);

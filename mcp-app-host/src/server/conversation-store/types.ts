@@ -13,6 +13,7 @@ export type ConversationEventType =
   | "assistant_message"
   | "tool_call"
   | "tool_result"
+  | "app_context_update"
   | "skill_load"
   | "skill_ready";
 

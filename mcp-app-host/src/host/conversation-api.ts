@@ -3,6 +3,7 @@ import type {
   ConversationRecord,
   ConversationSummary
 } from "../server/conversation-store/index.js";
+import type { ModelContext } from "./mcp-bridge.js";
 
 export type ConversationPayload = {
   conversation: ConversationRecord;
@@ -67,5 +68,25 @@ export async function deleteConversationRecord(id: string): Promise<void> {
 
   if (!response.ok && response.status !== 404) {
     throw new Error(`Failed to delete conversation (${response.status})`);
+  }
+}
+
+export async function persistConversationAppContext(
+  conversationId: string,
+  appInstanceId: string,
+  toolName: string,
+  context: ModelContext
+): Promise<void> {
+  const response = await fetch(
+    `/api/conversations/${encodeURIComponent(conversationId)}/app-context`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ appInstanceId, toolName, context })
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error(`Failed to persist app context (${response.status})`);
   }
 }
