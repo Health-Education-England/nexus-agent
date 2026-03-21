@@ -393,10 +393,9 @@ export async function handleChat(req: Request, res: Response): Promise<void> {
         tools: getToolsForRequest(session.loadedSkills)
       });
 
-      // Stream text deltas to the client as they arrive
+      // Buffer text deltas; only emit after we know whether tools are used.
       stream.on("text", text => {
         assistantTextAccumulator += text;
-        sendEvent(res, { type: "text", text });
       });
 
       const response = await stream.finalMessage();
@@ -413,16 +412,15 @@ export async function handleChat(req: Request, res: Response): Promise<void> {
           b.type === "tool_use"
       );
 
-      // Persist assistant text (if any meaningful text was streamed)
-      if (assistantTextAccumulator.trim().length > 0) {
-        pendingEvents.push({
-          type: "assistant_message",
-          role: "assistant",
-          content: { text: assistantTextAccumulator, model: MODEL }
-        });
-      }
-
       if (toolUseBlocks.length === 0) {
+        if (assistantTextAccumulator.trim().length > 0) {
+          sendEvent(res, { type: "text", text: assistantTextAccumulator });
+          pendingEvents.push({
+            type: "assistant_message",
+            role: "assistant",
+            content: { text: assistantTextAccumulator, model: MODEL }
+          });
+        }
         // No tool calls — we're done
         break;
       }

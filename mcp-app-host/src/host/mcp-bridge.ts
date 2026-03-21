@@ -38,6 +38,7 @@ export const log = {
 // --- Server connection ---
 
 export interface ServerInfo {
+  url: URL;
   name: string;
   client: Client;
   tools: Map<string, Tool>;
@@ -62,7 +63,56 @@ export async function connectToServer(serverUrl: URL): Promise<ServerInfo> {
   const resources = new Map(resourcesList.resources.map(r => [r.uri, r]));
   log.info("Server resources:", Array.from(resources.keys()));
 
-  return { name, client, tools, resources, appHtmlCache: new Map() };
+  return {
+    url: new URL(serverUrl.href),
+    name,
+    client,
+    tools,
+    resources,
+    appHtmlCache: new Map()
+  };
+}
+
+function isServerNotInitializedError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /server not initialized/i.test(message);
+}
+
+async function reconnectServer(serverInfo: ServerInfo): Promise<void> {
+  log.warn(`Reconnecting MCP server client: ${serverInfo.url.href}`);
+
+  const client = new Client(IMPLEMENTATION);
+  await client.connect(new StreamableHTTPClientTransport(serverInfo.url));
+
+  const name = client.getServerVersion()?.name ?? serverInfo.url.href;
+  const toolsList = await client.listTools();
+  const resourcesList = await client.listResources();
+
+  serverInfo.client = client;
+  serverInfo.name = name;
+  serverInfo.tools = new Map(toolsList.tools.map(tool => [tool.name, tool]));
+  serverInfo.resources = new Map(
+    resourcesList.resources.map(resource => [resource.uri, resource])
+  );
+}
+
+export async function readUiResource(
+  serverInfo: ServerInfo,
+  uri: string
+): Promise<UiResourceData> {
+  try {
+    return await getUiResource(serverInfo, uri);
+  } catch (error) {
+    if (!isServerNotInitializedError(error)) {
+      throw error;
+    }
+
+    log.warn(
+      `UI resource read failed due to uninitialized server session. Retrying once: ${uri}`
+    );
+    await reconnectServer(serverInfo);
+    return getUiResource(serverInfo, uri);
+  }
 }
 
 // --- Tool calling ---
@@ -109,7 +159,7 @@ export function callTool(
 
   const uiResourceUri = getToolUiResourceUri(tool);
   if (uiResourceUri) {
-    toolCallInfo.appResourcePromise = getUiResource(serverInfo, uiResourceUri);
+    toolCallInfo.appResourcePromise = readUiResource(serverInfo, uiResourceUri);
   }
 
   return toolCallInfo;

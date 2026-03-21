@@ -25,6 +25,7 @@ import {
   type ServerInfo,
   type ToolCallInfo,
   connectToServer,
+  readUiResource,
   log
 } from "./mcp-bridge.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
@@ -629,10 +630,7 @@ function buildToolCallInfo(
   };
 
   info.appResourcePromise = (async () => {
-    const resource = await server.client.readResource({ uri: resourceUri });
-    const content = resource.contents[0];
-    const html = "blob" in content ? atob(content.blob) : (content.text ?? "");
-    return { html };
+    return readUiResource(server, resourceUri);
   })();
 
   return info;

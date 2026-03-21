@@ -7,6 +7,8 @@ import { marked } from "marked";
 import {
   type ToolCallInfo,
   hasAppHtml,
+  getToolUiResourceUri,
+  readUiResource,
   loadSandboxProxy,
   initializeApp,
   newAppBridge,
@@ -22,6 +24,7 @@ let skillLoadingShownAt = 0;
 let pendingHideSkillChipTimeout: number | null = null;
 const SKILL_LOADING_MIN_VISIBLE_MS = 1000;
 let responseSynthesisChip: HTMLDivElement | null = null;
+const MAX_APP_RENDER_RETRIES = 3;
 
 function removeSkillLoadingChip(): void {
   skillLoadingChip?.remove();
@@ -156,18 +159,29 @@ export async function appendAppIframe(
   toolCallInfo: ToolCallInfo
 ): Promise<void> {
   if (!hasAppHtml(toolCallInfo)) return;
+  let retryCount = 0;
 
   const container = document.createElement("div");
   container.className = "app-container";
 
-  const iframe = document.createElement("iframe");
-  container.appendChild(iframe);
   messagesContainer.appendChild(container);
   scrollToBottom();
 
-  try {
+  const renderAttempt = async (): Promise<void> => {
+    const uiResourceUri = getToolUiResourceUri(toolCallInfo.tool);
+    if (!uiResourceUri) return;
+
+    const retryableToolCallInfo = {
+      ...toolCallInfo,
+      appResourcePromise: readUiResource(toolCallInfo.serverInfo, uiResourceUri)
+    };
+
+    container.innerHTML = "";
+    const iframe = document.createElement("iframe");
+    container.appendChild(iframe);
+
     // Get CSP and permissions from the resource, then load sandbox
-    const { csp, permissions } = await toolCallInfo.appResourcePromise;
+    const { csp, permissions } = await retryableToolCallInfo.appResourcePromise;
     const firstTime = await loadSandboxProxy(iframe, csp, permissions);
 
     if (firstTime) {
@@ -176,11 +190,51 @@ export async function appendAppIframe(
         onMessage: msg => log.info("App message:", msg)
       });
 
-      await initializeApp(iframe, appBridge, toolCallInfo);
+      await initializeApp(iframe, appBridge, retryableToolCallInfo);
     }
-  } catch (err) {
+  };
+
+  const showRetryFallback = (err: unknown): void => {
     log.error("Failed to load MCP App:", err);
-    container.innerHTML = `<div class="message tool-call">Failed to load app: ${err instanceof Error ? err.message : err}</div>`;
+    container.innerHTML = "";
+    const canRetryInPlace = retryCount < MAX_APP_RENDER_RETRIES;
+
+    const fallback = document.createElement("div");
+    fallback.className = "message tool-call";
+
+    const message = document.createElement("span");
+    message.textContent = canRetryInPlace
+      ? "Hmm, having trouble displaying this app for you. Please click Try again."
+      : "Hmm, this app still isn’t loading after multiple attempts. Please refresh the page and try again.";
+    fallback.appendChild(message);
+
+    const action = document.createElement("button");
+    action.type = "button";
+    action.textContent = canRetryInPlace ? "Try again" : "Refresh page";
+    action.style.marginLeft = "0.6rem";
+    action.addEventListener("click", () => {
+      action.disabled = true;
+      if (canRetryInPlace) {
+        retryCount += 1;
+        action.textContent = "Retrying…";
+        void renderAttempt().catch(retryErr => {
+          showRetryFallback(retryErr);
+        });
+        return;
+      }
+
+      action.textContent = "Refreshing…";
+      window.location.reload();
+    });
+    fallback.appendChild(action);
+
+    container.appendChild(fallback);
+  };
+
+  try {
+    await renderAttempt();
+  } catch (err) {
+    showRetryFallback(err);
   }
 }
 
