@@ -1,14 +1,22 @@
 /**
- * Agent endpoint: Anthropic Claude tool-use loop with streaming SSE output.
+ * Agent endpoint: streaming tool-use loop with plug-and-play AI providers.
  *
- * - Streams text deltas to the client as they arrive.
- * - Supports multi-turn tool calls (loop until Claude stops requesting tools).
- * - Agent Skills: Claude loads a SKILL.md via read_skill() before using its tools.
+ * - Streams text deltas to the client as they arrive (SSE).
+ * - Supports multi-turn tool calls (loop until the model stops requesting tools).
+ * - Agent Skills: the model loads a SKILL.md via read_skill() before using its tools.
  *   Tool schemas are added to the API call progressively as skills are loaded.
  * - Conversations are persisted via the pluggable ConversationStore.
+ * - AI provider is selected via AI_PROVIDER env var (anthropic | bedrock).
  */
 
-import Anthropic from "@anthropic-ai/sdk";
+import {
+  createProvider,
+  type ProviderMessage,
+  type ProviderContentBlock,
+  type ProviderTool,
+  type ProviderToolResultBlock,
+  type ProviderToolUseBlock
+} from "./providers/index.js";
 import type { Request, Response } from "express";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -28,10 +36,10 @@ import {
 } from "./conversation-store/index.js";
 
 const MAX_TOOL_TURNS = 10;
-const MODEL = process.env.ANTHROPIC_MODEL ?? "claude-sonnet-4-20250514";
 const MAX_TOKENS = 4096;
 
-const anthropic = new Anthropic(); // reads ANTHROPIC_API_KEY from env
+const { provider, providerName, model: MODEL } = createProvider(MAX_TOKENS);
+console.log(`[Agent] Using provider: ${providerName} (${MODEL})`);
 
 // ---- Conversation store (swap FileConversationStore for a DB impl later) ----
 
@@ -46,7 +54,7 @@ export const conversationStore: ConversationStore = new FileConversationStore(
 // ---- Per-session in-memory state keyed by conversationId ----
 
 type SessionState = {
-  history: Anthropic.MessageParam[];
+  history: ProviderMessage[];
   loadedSkills: Set<string>;
 };
 
@@ -88,17 +96,12 @@ function getToolResultText(content: Record<string, unknown>): string {
 }
 
 function appendAssistantToolUses(
-  history: Anthropic.MessageParam[],
-  toolUses: Array<{
-    type: "tool_use";
-    id: string;
-    name: string;
-    input: Record<string, unknown>;
-  }>
+  history: ProviderMessage[],
+  toolUses: ProviderToolUseBlock[]
 ): void {
   const lastMessage = history.at(-1);
   if (lastMessage?.role === "assistant") {
-    let existingContent: Array<Anthropic.ContentBlockParam> = [];
+    let existingContent: ProviderContentBlock[] = [];
     if (Array.isArray(lastMessage.content)) {
       existingContent = [...lastMessage.content];
     } else if (typeof lastMessage.content === "string") {
@@ -124,7 +127,7 @@ async function hydrateSessionIfNeeded(
   }
 
   const events = await conversationStore.getEvents(conversationId);
-  const history: Anthropic.MessageParam[] = [];
+  const history: ProviderMessage[] = [];
   const loadedSkills = new Set<string>();
 
   let index = 0;
@@ -150,13 +153,8 @@ async function hydrateSessionIfNeeded(
     }
 
     if (event.type === "tool_call") {
-      const toolUses: Array<{
-        type: "tool_use";
-        id: string;
-        name: string;
-        input: Record<string, unknown>;
-      }> = [];
-      const toolResults: Anthropic.ToolResultBlockParam[] = [];
+      const toolUses: ProviderToolUseBlock[] = [];
+      const toolResults: ProviderToolResultBlock[] = [];
       const pendingToolUses: Array<{ id: string; name: string }> = [];
 
       while (index < events.length) {
@@ -288,14 +286,14 @@ function sendEvent(res: Response, event: ChatEvent): void {
  *   - gold-guide tools: ask_gold_guide
  *   - ltft-calculator tools: calculate_ltft_cct
  */
-function getToolsForRequest(loadedSkills: Set<string>): Anthropic.Tool[] {
+function getToolsForRequest(loadedSkills: Set<string>): ProviderTool[] {
   // Always include read_skill
   const readSkillTool = getLocalToolByName("read_skill")!;
-  const alwaysOn: Anthropic.Tool[] = [
+  const alwaysOn: ProviderTool[] = [
     {
       name: readSkillTool.name,
       description: readSkillTool.description,
-      input_schema: readSkillTool.inputSchema as Anthropic.Tool["input_schema"]
+      input_schema: readSkillTool.inputSchema
     }
   ];
 
@@ -309,11 +307,13 @@ function getToolsForRequest(loadedSkills: Set<string>): Anthropic.Tool[] {
     )
   ).sort((a, b) => a.localeCompare(b));
 
-  const skillTools = getToolsForNames(skillToolNames).map(t => ({
-    name: t.name,
-    description: t.description,
-    input_schema: t.input_schema as Anthropic.Tool["input_schema"]
-  }));
+  const skillTools: ProviderTool[] = getToolsForNames(skillToolNames).map(
+    t => ({
+      name: t.name,
+      description: t.description,
+      input_schema: t.input_schema
+    })
+  );
 
   return [...alwaysOn, ...skillTools];
 }
@@ -382,24 +382,18 @@ export async function handleChat(req: Request, res: Response): Promise<void> {
   try {
     let toolTurns = 0;
 
-    // Agent loop: keep calling Claude until it stops requesting tools
+    // Agent loop: keep calling the model until it stops requesting tools
     while (toolTurns < MAX_TOOL_TURNS) {
       let assistantTextAccumulator = "";
 
-      const stream = anthropic.messages.stream({
-        model: MODEL,
-        max_tokens: MAX_TOKENS,
-        system: buildSystemPrompt(),
-        messages: session.history,
-        tools: getToolsForRequest(session.loadedSkills)
-      });
-
-      // Buffer text deltas; only emit after we know whether tools are used.
-      stream.on("text", text => {
-        assistantTextAccumulator += text;
-      });
-
-      const response = await stream.finalMessage();
+      const response = await provider.streamResponse(
+        session.history,
+        getToolsForRequest(session.loadedSkills),
+        buildSystemPrompt(),
+        text => {
+          assistantTextAccumulator += text;
+        }
+      );
 
       // Add the full assistant response to conversation history
       session.history.push({
@@ -407,10 +401,9 @@ export async function handleChat(req: Request, res: Response): Promise<void> {
         content: response.content
       });
 
-      // Check if Claude wants to use tools
+      // Check if the model wants to use tools
       const toolUseBlocks = response.content.filter(
-        (b): b is Anthropic.ContentBlock & { type: "tool_use" } =>
-          b.type === "tool_use"
+        (b): b is ProviderToolUseBlock => b.type === "tool_use"
       );
 
       if (toolUseBlocks.length === 0) {
@@ -427,7 +420,7 @@ export async function handleChat(req: Request, res: Response): Promise<void> {
       }
 
       // Execute each tool call and collect results
-      const toolResults: Anthropic.ToolResultBlockParam[] = [];
+      const toolResults: ProviderToolResultBlock[] = [];
 
       for (const toolUse of toolUseBlocks) {
         const meta = isMetaTool(toolUse.name);
