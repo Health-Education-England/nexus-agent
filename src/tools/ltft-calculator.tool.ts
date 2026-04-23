@@ -37,10 +37,10 @@ export const LtftCalculatorTool: ToolDefinition = {
 
 IMPORTANT instructions for calling this tool:
 - All dates MUST be provided in ISO 8601 format: YYYY-MM-DD.
-- All percentages MUST be provided as a decimal between 0 and 1 (e.g., 80% → 0.8).
+- proposed_work_percentage MUST be a decimal between 0 and 1 exclusive (e.g., 80% → 0.8).
 - The proposed_start_date cannot be in the past.
 - Don't guess today's date - use the get_current_datetime tool first.
-- Standard LTFT percentages are 50%, 60%, 70%, 80% (and 100% for return to full-time).`,
+- Standard LTFT percentages are 50%, 60%, 70%, 80%.`,
   input_schema: {
     type: "object",
     properties: {
@@ -52,13 +52,9 @@ IMPORTANT instructions for calling this tool:
         type: "string",
         description: "Current CCT date in YYYY-MM-DD format."
       },
-      current_work_percentage: {
-        type: "number",
-        description: "Current WTE as a decimal between 0 and 1."
-      },
       proposed_work_percentage: {
         type: "number",
-        description: "Proposed WTE as a decimal between 0 and 1."
+        description: "Proposed WTE as a decimal between 0 and 1 (exclusive)."
       },
       proposed_start_date: {
         type: "string",
@@ -67,7 +63,6 @@ IMPORTANT instructions for calling this tool:
     },
     required: [
       "current_cct_date",
-      "current_work_percentage",
       "proposed_work_percentage",
       "proposed_start_date"
     ]
@@ -76,7 +71,6 @@ IMPORTANT instructions for calling this tool:
     try {
       const programmeName = (input.programme_name as string) || "Programme";
       const currentCctStr = input.current_cct_date as string;
-      const wteCurrent = input.current_work_percentage as number;
       const wteProposed = input.proposed_work_percentage as number;
       const startDateStr = input.proposed_start_date as string;
 
@@ -89,11 +83,8 @@ IMPORTANT instructions for calling this tool:
       if (Number.isNaN(startDate.getTime())) {
         return `Error: Invalid proposed start date '${startDateStr}'. Expected YYYY-MM-DD format.`;
       }
-      if (wteCurrent <= 0 || wteCurrent > 1) {
-        return `Error: current_work_percentage must be between 0 (exclusive) and 1 (inclusive). Got ${wteCurrent}.`;
-      }
-      if (wteProposed <= 0 || wteProposed > 1) {
-        return `Error: proposed_work_percentage must be between 0 (exclusive) and 1 (inclusive). Got ${wteProposed}.`;
+      if (wteProposed <= 0 || wteProposed >= 1) {
+        return `Error: proposed_work_percentage must be between 0 and 1 (exclusive). Got ${wteProposed}.`;
       }
 
       const today = new Date();
@@ -114,21 +105,17 @@ IMPORTANT instructions for calling this tool:
         );
       }
 
-      const standardWtes = [0.5, 0.6, 0.7, 0.8, 1.0];
+      const standardWtes = [0.5, 0.6, 0.7, 0.8];
       if (!standardWtes.some(s => Math.abs(s - wteProposed) < 0.01)) {
         warnings.push(
-          `Proposed percentage ${(wteProposed * 100).toFixed(0)}% is not a standard LTFT percentage (50%, 60%, 70%, 80%, 100%).`
+          `Proposed percentage ${(wteProposed * 100).toFixed(0)}% is not a standard LTFT percentage (50%, 60%, 70%, 80%).`
         );
       }
 
       const msPerDay = 1000 * 60 * 60 * 24;
-      const remainingDays = Math.ceil(
-        (endDate.getTime() - startDate.getTime()) / msPerDay
-      );
-      const adjustedDays = Math.ceil(
-        (remainingDays * wteCurrent) / wteProposed
-      );
-      const extensionDays = adjustedDays - remainingDays;
+      const changeDays =
+        Math.round((endDate.getTime() - startDate.getTime()) / msPerDay) + 1;
+      const extensionDays = Math.round(changeDays - changeDays * wteProposed);
 
       const newCctDate = new Date(endDate.getTime() + extensionDays * msPerDay);
       const fmt = (d: Date) => d.toISOString().split("T")[0];
@@ -137,10 +124,7 @@ IMPORTANT instructions for calling this tool:
         programme: programmeName,
         current_cct_date: fmt(endDate),
         proposed_start_date: fmt(startDate),
-        current_wte: `${(wteCurrent * 100).toFixed(0)}%`,
         proposed_wte: `${(wteProposed * 100).toFixed(0)}%`,
-        remaining_days_in_current_period: remainingDays,
-        adjusted_days_at_new_wte: adjustedDays,
         extension_days: extensionDays,
         new_cct_date: fmt(newCctDate),
         warnings: warnings.length > 0 ? warnings : undefined
@@ -153,14 +137,7 @@ IMPORTANT instructions for calling this tool:
           details: formatIsoDateForDisplay(result.current_cct_date as string)
         },
         {
-          item: "Current working pattern",
-          details:
-            (result.current_wte as string) === "100%"
-              ? "100% (full-time)"
-              : (result.current_wte as string)
-        },
-        {
-          item: "Proposed working pattern",
+          item: "Proposed working percentage",
           details: result.proposed_wte as string
         },
         {

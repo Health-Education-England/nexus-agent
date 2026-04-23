@@ -1,12 +1,14 @@
 /**
  * Pure LTFT CCT calculation logic.
- * Adapted from the root project's ltft-calculator.tool.ts.
+ *
+ * Extension = changeDays * (1 - proposedWte), where changeDays is the
+ * inclusive day count from the proposed LTFT start date to the current
+ * CCT date. The new CCT date is the current CCT date plus that extension.
  */
 
 export type CalculatorInput = {
   programme_name?: string;
   current_cct_date: string;
-  current_work_percentage: number;
   proposed_work_percentage: number;
   proposed_start_date: string;
 };
@@ -15,10 +17,7 @@ export type CalculatorResult = {
   programme: string;
   current_cct_date: string;
   proposed_start_date: string;
-  current_wte: string;
   proposed_wte: string;
-  remaining_days: number;
-  adjusted_days: number;
   extension_days: number;
   new_cct_date: string;
   extension_formatted: string;
@@ -31,17 +30,15 @@ type SummaryRow = [string, string];
 const MS_PER_DAY = 1000 * 60 * 60 * 24;
 const SHORT_NOTICE_WEEKS = 16;
 const SHORT_NOTICE_MS = SHORT_NOTICE_WEEKS * 7 * MS_PER_DAY;
-const STANDARD_WTES = [0.5, 0.6, 0.7, 0.8, 1] as const;
+const STANDARD_WTES = [0.5, 0.6, 0.7, 0.8] as const;
 
 const ERROR_MESSAGES = {
   invalidCurrentCctDate: (value: string) =>
     `Invalid current CCT date '${value}'. Expected YYYY-MM-DD.`,
   invalidProposedStartDate: (value: string) =>
     `Invalid proposed start date '${value}'. Expected YYYY-MM-DD.`,
-  invalidCurrentWte: (value: number) =>
-    `current_work_percentage must be between 0 (exclusive) and 1 (inclusive). Got ${value}.`,
   invalidProposedWte: (value: number) =>
-    `proposed_work_percentage must be between 0 (exclusive) and 1 (inclusive). Got ${value}.`,
+    `proposed_work_percentage must be between 0 and 1 (exclusive). Got ${value}.`,
   proposedDateInPast: (value: string) =>
     `Proposed start date ${value} is in the past.`,
   proposedDateAfterCct: "Proposed start date is after the current CCT date."
@@ -51,7 +48,7 @@ const WARNING_MESSAGES = {
   shortNotice:
     "The proposed start date is within 16 weeks — classed as 'short notice', only approved for exceptional circumstances.",
   nonStandardWte: (value: number) =>
-    `Proposed percentage ${(value * 100).toFixed(0)}% is not a standard LTFT percentage (50%, 60%, 70%, 80%, 100%).`
+    `Proposed percentage ${(value * 100).toFixed(0)}% is not a standard LTFT percentage (50%, 60%, 70%, 80%).`
 } as const;
 
 function formatDate(isoDate: string): string {
@@ -92,26 +89,20 @@ function parseIsoDate(
   return date;
 }
 
-function validateWte(
-  value: number,
-  errorMessage: (value: number) => string
-): void {
-  if (value <= 0 || value > 1) {
-    throw new Error(errorMessage(value));
-  }
-}
-
 function validateInput(
   input: CalculatorInput,
   endDate: Date,
   startDate: Date,
   today: Date
 ): void {
-  validateWte(input.current_work_percentage, ERROR_MESSAGES.invalidCurrentWte);
-  validateWte(
-    input.proposed_work_percentage,
-    ERROR_MESSAGES.invalidProposedWte
-  );
+  if (
+    input.proposed_work_percentage <= 0 ||
+    input.proposed_work_percentage >= 1
+  ) {
+    throw new Error(
+      ERROR_MESSAGES.invalidProposedWte(input.proposed_work_percentage)
+    );
+  }
 
   if (startDate < today) {
     throw new Error(
@@ -141,26 +132,22 @@ function buildWarnings(
   return warnings;
 }
 
-function calculateDurations(
-  endDate: Date,
-  startDate: Date,
-  currentWte: number,
+function calcCctExtension(
+  changeStartDate: Date,
+  changeEndDate: Date,
   proposedWte: number
-): { remainingDays: number; adjustedDays: number; extensionDays: number } {
-  const remainingDays = Math.ceil(
-    (endDate.getTime() - startDate.getTime()) / MS_PER_DAY
-  );
-  const adjustedDays = Math.ceil((remainingDays * currentWte) / proposedWte);
-  const extensionDays = adjustedDays - remainingDays;
-
-  return { remainingDays, adjustedDays, extensionDays };
+): number {
+  const changeDays =
+    Math.round(
+      (changeEndDate.getTime() - changeStartDate.getTime()) / MS_PER_DAY
+    ) + 1;
+  return Math.round(changeDays - changeDays * proposedWte);
 }
 
 function buildSummaryRows(
   programme: string,
   currentCctDate: string,
   proposedStartDate: string,
-  currentWte: string,
   proposedWte: string,
   newCctDate: string,
   extensionDays: number
@@ -168,11 +155,7 @@ function buildSummaryRows(
   return [
     ["Programme", programme],
     ["Current CCT date", formatDate(currentCctDate)],
-    [
-      "Current working pattern",
-      currentWte === "100%" ? "100% (full-time)" : currentWte
-    ],
-    ["Proposed working pattern", proposedWte],
+    ["Proposed working percentage", proposedWte],
     ["Proposed start date", formatDate(proposedStartDate)],
     ["New CCT date", formatDate(newCctDate)],
     ["Training extension", formatExtension(extensionDays)]
@@ -197,7 +180,6 @@ export function calculate(input: CalculatorInput): CalculatorResult {
     input.proposed_start_date,
     ERROR_MESSAGES.invalidProposedStartDate
   );
-  const wteCurrent = input.current_work_percentage;
   const wteProposed = input.proposed_work_percentage;
 
   const today = new Date();
@@ -206,27 +188,19 @@ export function calculate(input: CalculatorInput): CalculatorResult {
   validateInput(input, endDate, startDate, today);
   const warnings = buildWarnings(startDate, today, wteProposed);
 
-  const { remainingDays, adjustedDays, extensionDays } = calculateDurations(
-    endDate,
-    startDate,
-    wteCurrent,
-    wteProposed
-  );
-
+  const extensionDays = calcCctExtension(startDate, endDate, wteProposed);
   const newCctDate = new Date(endDate.getTime() + extensionDays * MS_PER_DAY);
 
   const currentCctDate = formatIsoDate(endDate);
   const proposedStartDate = formatIsoDate(startDate);
   const newCctDateIso = formatIsoDate(newCctDate);
 
-  const currentWte = `${(wteCurrent * 100).toFixed(0)}%`;
   const proposedWte = `${(wteProposed * 100).toFixed(0)}%`;
 
   const rows = buildSummaryRows(
     programme,
     currentCctDate,
     proposedStartDate,
-    currentWte,
     proposedWte,
     newCctDateIso,
     extensionDays
@@ -236,10 +210,7 @@ export function calculate(input: CalculatorInput): CalculatorResult {
     programme,
     current_cct_date: currentCctDate,
     proposed_start_date: proposedStartDate,
-    current_wte: currentWte,
     proposed_wte: proposedWte,
-    remaining_days: remainingDays,
-    adjusted_days: adjustedDays,
     extension_days: extensionDays,
     new_cct_date: newCctDateIso,
     extension_formatted: formatExtension(extensionDays),

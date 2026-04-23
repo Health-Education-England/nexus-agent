@@ -63,8 +63,8 @@ Interaction model:
 
 Input rules:
 - All dates must be YYYY-MM-DD
-- All percentages must be decimals between 0 and 1, for example 80% = 0.8
-- Standard LTFT percentages are 50%, 60%, 70%, 80%, and 100% for return to full-time`,
+- Proposed percentage must be a decimal between 0 and 1 (exclusive), for example 80% = 0.8
+- Standard LTFT percentages are 50%, 60%, 70%, and 80%`,
       inputSchema: {
         programme_name: z
           .string()
@@ -74,14 +74,10 @@ Input rules:
           .string()
           .optional()
           .describe("Current CCT date in YYYY-MM-DD format."),
-        current_work_percentage: z
-          .number()
-          .optional()
-          .describe("Current WTE as a decimal between 0 and 1."),
         proposed_work_percentage: z
           .number()
           .optional()
-          .describe("Proposed WTE as a decimal between 0 and 1."),
+          .describe("Proposed WTE as a decimal between 0 and 1 (exclusive)."),
         proposed_start_date: z
           .string()
           .optional()
@@ -115,7 +111,6 @@ Input rules:
       // For form submissions, require complete inputs before calculation.
       const required = [
         "current_cct_date",
-        "current_work_percentage",
         "proposed_work_percentage",
         "proposed_start_date"
       ] as const;
@@ -136,7 +131,6 @@ Input rules:
         const result = calculate({
           programme_name: args.programme_name,
           current_cct_date: args.current_cct_date as string,
-          current_work_percentage: args.current_work_percentage as number,
           proposed_work_percentage: args.proposed_work_percentage as number,
           proposed_start_date: args.proposed_start_date as string
         });

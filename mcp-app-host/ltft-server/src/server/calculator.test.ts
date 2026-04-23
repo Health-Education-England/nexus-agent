@@ -14,7 +14,6 @@ function validInput(overrides: Partial<Parameters<typeof calculate>[0]> = {}) {
 
   return {
     current_cct_date: addDays(today, 365),
-    current_work_percentage: 1,
     proposed_work_percentage: 0.8,
     proposed_start_date: addDays(today, 30),
     ...overrides

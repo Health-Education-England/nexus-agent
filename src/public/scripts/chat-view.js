@@ -85,11 +85,10 @@ export function createChatView({ chat, markdown, scrollToBottom }) {
     const details = document.createElement("div");
     details.className = "ltft-user-submission-details";
 
-    const currentPct = `${Math.round(payload.current_work_percentage * 100)}%`;
     const proposedPct = `${Math.round(payload.proposed_work_percentage * 100)}%`;
     const parts = [
       `Current CCT: ${formatTrainingDate(payload.current_cct_date)}`,
-      `WTE: ${currentPct} → ${proposedPct}`,
+      `Proposed WTE: ${proposedPct}`,
       `Start: ${formatTrainingDate(payload.proposed_start_date)}`
     ];
 
@@ -120,7 +119,6 @@ function tryParseLtftSubmission(text) {
 
     const requiredKeys = [
       "current_cct_date",
-      "current_work_percentage",
       "proposed_work_percentage",
       "proposed_start_date"
     ];
@@ -131,7 +129,6 @@ function tryParseLtftSubmission(text) {
     if (
       typeof parsed.current_cct_date !== "string" ||
       typeof parsed.proposed_start_date !== "string" ||
-      typeof parsed.current_work_percentage !== "number" ||
       typeof parsed.proposed_work_percentage !== "number"
     ) {
       return null;

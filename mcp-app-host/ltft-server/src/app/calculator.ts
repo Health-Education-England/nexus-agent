@@ -35,7 +35,6 @@ app.ontoolinput = params => {
 
   setFormValue("programme_name", args.programme_name);
   setFormValue("current_cct_date", args.current_cct_date);
-  setFormValue("current_work_percentage", args.current_work_percentage);
   setFormValue("proposed_work_percentage", args.proposed_work_percentage);
   setFormValue("proposed_start_date", args.proposed_start_date);
 };
@@ -84,7 +83,7 @@ form.addEventListener("submit", async e => {
   const proposedWte = data.get("proposed_work_percentage") as string;
 
   if (!proposedWte) {
-    showError("Please select a proposed working pattern.");
+    showError("Please select a proposed working percentage.");
     return;
   }
 
@@ -94,9 +93,6 @@ form.addEventListener("submit", async e => {
   try {
     const persistedInput: Record<string, unknown> = {
       current_cct_date: data.get("current_cct_date") as string,
-      current_work_percentage: Number.parseFloat(
-        data.get("current_work_percentage") as string
-      ),
       proposed_work_percentage: Number.parseFloat(proposedWte),
       proposed_start_date: data.get("proposed_start_date") as string
     };
@@ -229,10 +225,7 @@ interface CalcResult {
   programme: string;
   current_cct_date: string;
   proposed_start_date: string;
-  current_wte: string;
   proposed_wte: string;
-  remaining_days: number;
-  adjusted_days: number;
   extension_days: number;
   new_cct_date: string;
   extension_formatted: string;
@@ -255,11 +248,7 @@ function showResult(r: CalcResult): void {
   const rows: [string, string, boolean?][] = [
     ["Programme", escapeHtml(r.programme)],
     ["Current CCT date", escapeHtml(formatDisplay(r.current_cct_date))],
-    [
-      "Current working pattern",
-      r.current_wte === "100%" ? "100% (full-time)" : escapeHtml(r.current_wte)
-    ],
-    ["Proposed working pattern", escapeHtml(r.proposed_wte)],
+    ["Proposed working percentage", escapeHtml(r.proposed_wte)],
     ["Proposed start date", escapeHtml(formatDisplay(r.proposed_start_date))],
     [
       "<strong>New CCT date</strong>",

@@ -1,18 +1,9 @@
-const CURRENT_WTE_OPTIONS = [
-  { value: "1.0", label: "Full time (100%)" },
-  { value: "0.8", label: "80%" },
-  { value: "0.7", label: "70%" },
-  { value: "0.6", label: "60%" },
-  { value: "0.5", label: "50% — half time" }
-];
-
 const PROPOSED_WTE_OPTIONS = [
   { value: "", label: "Select…" },
   { value: "0.5", label: "50% — half time" },
   { value: "0.6", label: "60%" },
   { value: "0.7", label: "70%" },
-  { value: "0.8", label: "80%" },
-  { value: "1.0", label: "Full time (100%)" }
+  { value: "0.8", label: "80%" }
 ];
 
 export function renderLtftFormWidget({
@@ -77,26 +68,10 @@ export function renderLtftFormWidget({
     })
   );
 
-  const row = document.createElement("div");
-  row.className = "widget-row";
-
-  row.appendChild(
-    makeWidgetField({
-      id: `cur-wte-${safeId}`,
-      label: "Current working pattern",
-      child: makeWteSelect(
-        `cur-wte-${safeId}`,
-        "current_work_percentage",
-        CURRENT_WTE_OPTIONS,
-        "1.0"
-      )
-    })
-  );
-
-  row.appendChild(
+  form.appendChild(
     makeWidgetField({
       id: `prop-wte-${safeId}`,
-      label: "Proposed working pattern",
+      label: "Proposed working percentage",
       child: makeWteSelect(
         `prop-wte-${safeId}`,
         "proposed_work_percentage",
@@ -105,8 +80,6 @@ export function renderLtftFormWidget({
       )
     })
   );
-
-  form.appendChild(row);
 
   form.appendChild(
     makeWidgetField({
@@ -142,7 +115,7 @@ export function renderLtftFormWidget({
       showWidgetError(
         form,
         submitBtn,
-        "Please select a proposed working pattern."
+        "Please select a proposed working percentage."
       );
       return;
     }
@@ -179,9 +152,6 @@ function buildPayload(formData) {
   return {
     ...(programmeName ? { programme_name: programmeName } : {}),
     current_cct_date: getFormValueAsString(formData, "current_cct_date"),
-    current_work_percentage: Number.parseFloat(
-      getFormValueAsString(formData, "current_work_percentage")
-    ),
     proposed_work_percentage: Number.parseFloat(
       getFormValueAsString(formData, "proposed_work_percentage")
     ),

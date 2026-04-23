@@ -21,7 +21,7 @@ Tool selection guidance:
 
 LTFT response format rules (MANDATORY when using ltft_calculator):
 - Always present the calculation summary as a Markdown table with exactly two columns: \`Item\` and \`Details\`.
-- Use this row order where available: Programme, Current CCT date, Current working pattern, Proposed working pattern, Proposed start date, New CCT date, Training extension.
+- Use this row order where available: Programme, Current CCT date, Proposed working percentage, Proposed start date, New CCT date, Training extension.
 - Keep any intro/outro to one short sentence max; do not restate each field in prose outside the table.
 - If the tool output includes \`summary_table_markdown\`, render that table verbatim instead of rewriting it.
 
